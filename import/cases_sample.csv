@@ -1,0 +1,4 @@
+organization_name,case_name,status,case_code,subsidy_program_code,contract_date,planned_start_date,planned_end_date,pre_application_due_date,final_application_due_date,acceptance_date,summary,owner_email,contact_name,contact_email
+株式会社サンプル商事,DX推進研修2026,doc_collecting,,jinzai_kaihatsu,2026-01-10,2026-04-01,2026-09-30,2026-02-28,2026-10-31,,人材開発支援助成金を活用したDXスキル習得研修,ops1@example.com,山田 太郎,yamada@sample-shoji.co.jp
+有限会社テストエンジニアリング,ITリテラシー向上研修,pre_application_ready,,jinzai_kaihatsu_ippan,2026-02-01,2026-05-01,2026-10-31,2026-03-31,2026-11-30,,全社員向けITリテラシー向上プログラム,ops2@example.com,鈴木 花子,suzuki@test-eng.co.jp
+合同会社サンプルフーズ,管理職向けマネジメント研修,training_in_progress,,jinzai_kaihatsu,2025-11-01,2026-01-15,2026-07-14,2025-12-31,2026-08-31,2026-02-10,中間管理職を対象とした次世代リーダー育成研修,ops1@example.com,佐藤 次郎,sato@sample-foods.co.jp

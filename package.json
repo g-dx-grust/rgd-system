@@ -1,0 +1,47 @@
+{
+  "name": "rgd-system",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --webpack",
+    "build": "next build --webpack",
+    "start": "next start",
+    "lint": "eslint",
+    "lint:fix": "eslint --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "db:seed": "node scripts/apply-seed.mjs",
+    "db:migrate": "node scripts/apply-migration.mjs",
+    "db:verify": "node scripts/verify-connection.mjs",
+    "import:cases": "npx tsx scripts/import-cases.ts",
+    "import:cases:dry": "npx tsx scripts/import-cases.ts --dry-run",
+    "db:seed-users": "npx tsx scripts/seed-admin-users.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.10.2",
+    "@supabase/supabase-js": "^2.103.0",
+    "jszip": "^3.10.1",
+    "next": "16.2.3",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^4.7.0",
+    "@vitest/coverage-v8": "^4.1.4",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.3",
+    "prettier": "^3.8.2",
+    "prettier-plugin-tailwindcss": "^0.6.14",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "vitest": "^4.1.4"
+  }
+}
