@@ -4,6 +4,19 @@
  * 初回申請の遷移条件判定・アカウント発行シート生成などの業務ロジック。
  */
 
+import {
+  Document,
+  Packer,
+  Paragraph,
+  Table,
+  TableRow,
+  TableCell,
+  TextRun,
+  AlignmentType,
+  WidthType,
+  BorderStyle,
+  HeadingLevel,
+} from "docx";
 import { createClient } from "@/lib/supabase/server";
 import type {
   PreApplicationReadinessResult,
@@ -141,6 +154,136 @@ export function buildAccountSheetCsv(rows: AccountSheetRow[]): string {
   }
 
   return lines.join("\r\n");
+}
+
+// ------------------------------------------------------------
+// アカウント発行シート Word (.docx) 生成
+// ------------------------------------------------------------
+
+export interface AccountSheetDocxInput {
+  organizationName: string;
+  caseCode: string;
+  courseName: string;
+  trainingStart: string | null;
+  trainingEnd: string | null;
+  issuedDateLabel: string;
+  rows: AccountSheetRow[];
+}
+
+const BORDER_THIN = {
+  top:    { style: BorderStyle.SINGLE, size: 4, color: "CCCCCC" },
+  bottom: { style: BorderStyle.SINGLE, size: 4, color: "CCCCCC" },
+  left:   { style: BorderStyle.SINGLE, size: 4, color: "CCCCCC" },
+  right:  { style: BorderStyle.SINGLE, size: 4, color: "CCCCCC" },
+};
+
+function infoRow(label: string, value: string): Paragraph {
+  return new Paragraph({
+    spacing: { after: 80 },
+    children: [
+      new TextRun({ text: label, bold: true, size: 22, font: "Meiryo" }),
+      new TextRun({ text: `　${value}`, size: 22, font: "Meiryo" }),
+    ],
+  });
+}
+
+export async function buildAccountSheetDocx(input: AccountSheetDocxInput): Promise<Buffer> {
+  const periodLabel =
+    input.trainingStart && input.trainingEnd
+      ? `${input.trainingStart} 〜 ${input.trainingEnd}`
+      : input.trainingStart ?? input.trainingEnd ?? "—";
+
+  const headerCells = (["No", "氏名", "氏名（カナ）", "ログインID", "部署"] as const).map(
+    (text) =>
+      new TableCell({
+        borders: BORDER_THIN,
+        shading: { fill: "F5F5F5" },
+        children: [
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            children: [new TextRun({ text, bold: true, size: 20, font: "Meiryo" })],
+          }),
+        ],
+      })
+  );
+
+  const dataRows = input.rows.map(
+    (r) =>
+      new TableRow({
+        children: [
+          new TableCell({
+            borders: BORDER_THIN,
+            children: [
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                children: [new TextRun({ text: String(r.no), size: 20, font: "Meiryo" })],
+              }),
+            ],
+          }),
+          new TableCell({
+            borders: BORDER_THIN,
+            children: [new Paragraph({ children: [new TextRun({ text: r.name, size: 20, font: "Meiryo" })] })],
+          }),
+          new TableCell({
+            borders: BORDER_THIN,
+            children: [new Paragraph({ children: [new TextRun({ text: r.nameKana, size: 20, font: "Meiryo" })] })],
+          }),
+          new TableCell({
+            borders: BORDER_THIN,
+            children: [new Paragraph({ children: [new TextRun({ text: r.employeeCode, size: 20, font: "Meiryo" })] })],
+          }),
+          new TableCell({
+            borders: BORDER_THIN,
+            children: [new Paragraph({ children: [new TextRun({ text: r.department, size: 20, font: "Meiryo" })] })],
+          }),
+        ],
+      })
+  );
+
+  const doc = new Document({
+    styles: {
+      default: {
+        document: {
+          run: { font: "Meiryo", size: 22 },
+        },
+      },
+    },
+    sections: [
+      {
+        children: [
+          new Paragraph({
+            heading: HeadingLevel.HEADING_1,
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 240 },
+            children: [
+              new TextRun({
+                text: "アカウント発行シート",
+                bold: true,
+                size: 36,
+                font: "Meiryo",
+              }),
+            ],
+          }),
+          new Paragraph({
+            alignment: AlignmentType.RIGHT,
+            spacing: { after: 360 },
+            children: [new TextRun({ text: `出力日：${input.issuedDateLabel}`, size: 20, font: "Meiryo" })],
+          }),
+          infoRow("会社名：", input.organizationName),
+          infoRow("研修コース：", input.courseName),
+          infoRow("研修期間：", periodLabel),
+          infoRow("対象人数：", `${input.rows.length}名`),
+          new Paragraph({ spacing: { after: 240 }, children: [] }),
+          new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            rows: [new TableRow({ children: headerCells, tableHeader: true }), ...dataRows],
+          }),
+        ],
+      },
+    ],
+  });
+
+  return Buffer.from(await Packer.toBuffer(doc));
 }
 
 // ------------------------------------------------------------

@@ -1,20 +1,16 @@
 "use client";
 
 import { type HTMLAttributes } from "react";
-import { logoutAction } from "@/server/usecases/auth/actions";
+import { NotificationBell } from "./NotificationBell";
 
 interface HeaderProps extends HTMLAttributes<HTMLElement> {
   onToggleSidebar?: () => void;
   isSidebarOpen?: boolean;
-  userDisplayName?: string;
-  userRoleLabel?: string;
 }
 
 export function Header({
   onToggleSidebar,
   isSidebarOpen,
-  userDisplayName,
-  userRoleLabel,
   className = "",
   ...props
 }: HeaderProps) {
@@ -57,49 +53,8 @@ export function Header({
         </svg>
       </button>
 
-      {/* サービス名 */}
-      <span
-        className="text-[22px] font-semibold text-[var(--color-text)] leading-none select-none"
-        style={{ fontFamily: "var(--font-base)" }}
-      >
-        RGDシステム
-      </span>
-
       <div className="flex-1" />
-
-      {/* ユーザー情報 + ログアウト */}
-      <div className="flex items-center gap-3">
-        {userDisplayName && (
-          <div className="hidden sm:flex flex-col items-end">
-            <span className="text-sm font-medium text-[var(--color-text)] leading-none">
-              {userDisplayName}
-            </span>
-            {userRoleLabel && (
-              <span className="text-xs text-[var(--color-text-muted)] leading-none mt-0.5">
-                {userRoleLabel}
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* ログアウトフォーム */}
-        <form action={logoutAction}>
-          <button
-            type="submit"
-            className={[
-              "h-8 px-3 text-xs font-medium",
-              "rounded-[var(--radius-sm)]",
-              "border border-[var(--color-border)]",
-              "text-[var(--color-text-muted)]",
-              "hover:bg-[var(--color-bg-secondary)] hover:text-[var(--color-text)]",
-              "transition-colors duration-150",
-              "cursor-pointer",
-            ].join(" ")}
-          >
-            ログアウト
-          </button>
-        </form>
-      </div>
+      <NotificationBell />
     </header>
   );
 }

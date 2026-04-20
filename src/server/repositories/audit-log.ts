@@ -28,11 +28,26 @@ export type AuditAction =
   | "specialist_package_create"
   | "billing_status_change"
   | "settings_change"
+  | "user_create"
   | "user_role_change"
+  | "user_password_reset"
   | "user_deactivate"
+  | "user_activate"
   | "lms_progress_sync"
   | "bulk_owner_change"
-  | "bulk_document_return";
+  | "bulk_document_return"
+  | "course_create"
+  | "course_update"
+  | "course_deactivate"
+  | "course_activate"
+  | "subsidy_program_create"
+  | "account_sheet_issue"
+  | "specialist_document_download"
+  | "specialist_submission_record"
+  | "specialist_final_complete"
+  | "deficiency_create"
+  | "deficiency_status_update"
+  | "specialist_comment_create";
 
 export interface WriteAuditLogParams {
   userId: string | null;

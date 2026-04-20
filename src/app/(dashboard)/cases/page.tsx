@@ -3,8 +3,9 @@ import { listCases } from "@/server/repositories/cases";
 import { getCurrentUserProfile } from "@/lib/auth/session";
 import { can, PERMISSIONS } from "@/lib/rbac";
 import { CaseStatusBadge, CaseFilterBar, SavedFilterBar } from "@/components/domain";
-import { ButtonLink } from "@/components/ui";
+import { ButtonLink, Badge } from "@/components/ui";
 import type { CaseStatus } from "@/lib/constants/case-status";
+import { listOperatingCompanies } from "@/server/repositories/operating-companies";
 
 const INACTIVE_STATUSES: CaseStatus[] = ["completed", "cancelled", "on_hold"];
 
@@ -28,6 +29,11 @@ async function listUserOptions() {
   return (data ?? []).map((u) => ({ id: String(u.id), displayName: String(u.display_name) }));
 }
 
+async function listOperatingCompanyOptions() {
+  const companies = await listOperatingCompanies();
+  return companies.map((company) => ({ id: company.id, name: company.name }));
+}
+
 export default async function CasesPage({
   searchParams,
 }: {
@@ -35,11 +41,12 @@ export default async function CasesPage({
 }) {
   const sp = await searchParams;
 
-  const status  = (sp["status"] as CaseStatus) || undefined;
-  const owner   = sp["owner"] || undefined;
-  const search  = sp["search"] || undefined;
-  const page    = Number(sp["page"] ?? 1);
-  const view    = sp["view"] || undefined;
+  const status           = (sp["status"] as CaseStatus) || undefined;
+  const owner            = sp["owner"] || undefined;
+  const search           = sp["search"] || undefined;
+  const page             = Number(sp["page"] ?? 1);
+  const view             = sp["view"] || undefined;
+  const operatingCompany = sp["operatingCompany"] || undefined;
 
   let overdueOnly      = false;
   let stalledOnly      = false;
@@ -53,13 +60,15 @@ export default async function CasesPage({
     stalledOnly = true;
   }
 
-  const [user, result, users] = await Promise.all([
+  const [user, result, users, operatingCompanies] = await Promise.all([
     getCurrentUserProfile(),
-    listCases({ status, ownerUserId: owner, search, page, perPage: 20, overdueOnly, stalledOnly, excludeStatuses }),
+    listCases({ status, ownerUserId: owner, search, page, perPage: 20, overdueOnly, stalledOnly, excludeStatuses, operatingCompanyId: operatingCompany }),
     listUserOptions(),
+    listOperatingCompanyOptions(),
   ]);
 
-  const canCreate = can(user?.roleCode, PERMISSIONS.CASE_CREATE);
+  const canCreate  = can(user?.roleCode, PERMISSIONS.CASE_CREATE);
+  const canViewAll = can(user?.roleCode, PERMISSIONS.CASE_VIEW_ALL);
   const totalPages = Math.ceil(result.total / result.perPage);
 
   return (
@@ -77,17 +86,20 @@ export default async function CasesPage({
       {/* 保存済みフィルタバー */}
       <SavedFilterBar
         scope="cases"
-        currentParams={{ status: status ?? "", owner: owner ?? "", search: search ?? "" }}
+        currentParams={{ status: status ?? "", owner: owner ?? "", search: search ?? "", operatingCompany: operatingCompany ?? "" }}
       />
 
       {/* フィルターバー */}
       <CaseFilterBar
         users={users}
+        operatingCompanies={operatingCompanies}
         currentStatus={status ?? ""}
         currentOwner={owner ?? ""}
         currentSearch={search ?? ""}
+        currentOperatingCompany={operatingCompany ?? ""}
         currentView={view}
         viewLabel={view ? VIEW_LABELS[view] : undefined}
+        canViewAll={canViewAll}
       />
 
       {/* 件数表示 */}
@@ -100,7 +112,7 @@ export default async function CasesPage({
       <div className="border border-[var(--color-border)] rounded-[var(--radius-md)] overflow-hidden">
         {result.cases.length === 0 ? (
           <div className="py-16 text-center text-[var(--color-text-muted)] text-sm">
-            {status || owner || search || view
+            {status || owner || search || view || operatingCompany
               ? "条件に一致する案件がありません。"
               : "案件が登録されていません。"}
           </div>
@@ -108,7 +120,7 @@ export default async function CasesPage({
           <table className="w-full text-sm">
             <thead className="bg-[var(--color-bg-secondary)] border-b border-[var(--color-border)]">
               <tr>
-                {["案件コード", "案件名", "企業名", "ステータス", "担当者", "不足書類", "未完了タスク", "次回期限"].map(
+                {["案件コード", "案件名", "企業名", "運営会社", "ステータス", "担当者", "不足書類", "未完了タスク", "次回期限"].map(
                   (h) => (
                     <th
                       key={h}
@@ -149,6 +161,9 @@ export default async function CasesPage({
                     </td>
                     <td className="px-4 py-3 text-[var(--color-text-sub)]">
                       {c.organizationName}
+                    </td>
+                    <td className="px-4 py-3">
+                      <OperatingCompanyBadge name={c.operatingCompanyName} />
                     </td>
                     <td className="px-4 py-3">
                       <CaseStatusBadge status={c.status} />
@@ -238,4 +253,13 @@ function isDueSoon(dateStr: string | null): boolean {
 function isOverdueFn(dateStr: string | null): boolean {
   if (!dateStr) return false;
   return new Date(dateStr) < new Date();
+}
+
+function OperatingCompanyBadge({ name }: { name: string }) {
+  const isGrast = name.includes("グラスト");
+  return (
+    <Badge variant={isGrast ? "accent" : "default"}>
+      {name || "—"}
+    </Badge>
+  );
 }

@@ -25,17 +25,32 @@ const ACTION_LABELS: Record<string, string> = {
   specialist_package_create:  "社労士連携パッケージ作成",
   billing_status_change:      "請求状態変更",
   settings_change:            "設定変更",
+  user_create:                "ユーザー作成",
   user_role_change:           "権限変更",
+  user_password_reset:        "パスワード再設定",
+  user_activate:              "ユーザー有効化",
   user_deactivate:            "ユーザー無効化",
   lms_progress_sync:          "LMS進捗同期",
   bulk_owner_change:          "一括担当者変更",
   bulk_document_return:       "一括書類差戻し",
+  course_create:              "コース作成",
+  course_update:              "コース更新",
+  course_activate:            "コース有効化",
+  course_deactivate:          "コース無効化",
+  subsidy_program_create:     "助成金種別作成",
+  account_sheet_issue:        "アカウント発行シート出力",
+  specialist_submission_record: "社労士提出記録",
+  specialist_final_complete:  "社労士最終申請完了",
+  deficiency_create:          "不備依頼作成",
+  deficiency_status_update:   "不備依頼ステータス更新",
+  specialist_comment_create:  "社労士コメント作成",
 };
 
 const FILTER_ACTIONS: AuditAction[] = [
   "case_create", "case_update", "case_delete", "case_status_change",
   "document_upload", "document_return", "document_delete",
-  "user_role_change", "login", "login_failed", "bulk_owner_change",
+  "user_create", "user_role_change", "user_password_reset",
+  "login", "login_failed", "bulk_owner_change",
 ];
 
 export default async function AuditLogsPage({

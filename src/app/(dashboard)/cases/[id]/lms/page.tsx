@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCase } from "@/server/repositories/cases";
 import {
@@ -9,7 +8,7 @@ import { listParticipants } from "@/server/repositories/participants";
 import { classifyProgress, calcCompletionRate, PROGRESS_STATUS_LABELS } from "@/server/services/lms";
 import { getCurrentUserProfile } from "@/lib/auth/session";
 import { can, PERMISSIONS } from "@/lib/rbac";
-import { CaseStatusBadge, CaseTabNav } from "@/components/domain";
+import { CasePageShell } from "@/components/domain";
 import { LmsSyncFormClient } from "./LmsSyncFormClient";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
@@ -36,18 +35,12 @@ export default async function CaseLmsPage({
   const canSync = can(user?.roleCode, PERMISSIONS.LMS_PROGRESS_SYNC);
   const canView = can(user?.roleCode, PERMISSIONS.LMS_PROGRESS_VIEW);
 
-  if (!canView) {
-    return (
-      <p className="text-sm text-[var(--color-text-muted)] mt-6">
-        LMS進捗を閲覧する権限がありません。
-      </p>
-    );
-  }
-
-  const [snapshots, syncLogs] = await Promise.all([
-    listLatestProgressSnapshots(id),
-    listSyncLogs(id, 10),
-  ]);
+  const [snapshots, syncLogs] = canView
+    ? await Promise.all([
+        listLatestProgressSnapshots(id),
+        listSyncLogs(id, 10),
+      ])
+    : [[], []];
 
   // 受講者 ID → 名前マップ
   const participantMap = new Map(participants.map((p) => [p.id, p]));
@@ -61,32 +54,26 @@ export default async function CaseLmsPage({
   const notStartedCount = classified.filter((c) => c.progressStatus === "not_started").length;
 
   return (
-    <div className="space-y-5">
-      {/* パンくず */}
-      <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
-        <Link href="/cases" className="hover:text-[var(--color-accent)]">案件管理</Link>
-        <span>/</span>
-        <Link href={`/cases/${id}`} className="hover:text-[var(--color-accent)]">
-          {caseData.caseCode}
-        </Link>
-        <span>/</span>
-        <span>LMS進捗</span>
-      </div>
-
-      {/* ヘッダー */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-[22px] font-semibold text-[var(--color-text)]">{caseData.caseName}</h1>
-            <CaseStatusBadge status={caseData.status} />
-          </div>
+    <CasePageShell
+      caseId={id}
+      caseCode={caseData.caseCode}
+      caseName={caseData.caseName}
+      caseStatus={caseData.status}
+      operatingCompanyName={caseData.operatingCompanyName}
+      organizationId={caseData.organizationId}
+      organizationName={caseData.organizationName}
+      activeTab="lms"
+      sectionTitle="LMS進捗"
+      sectionDescription="受講者別の学習進捗と同期履歴を確認します。"
+    >
+      {!canView ? (
+        <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-4">
+          <p className="text-sm text-[var(--color-text-muted)]">
+            LMS進捗を閲覧する権限がありません。
+          </p>
         </div>
-      </div>
-
-      {/* タブナビ */}
-      <CaseTabNav caseId={id} activeTab="lms" />
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      ) : (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* 左: 受講者進捗テーブル */}
         <div className="lg:col-span-2 space-y-5">
 
@@ -255,7 +242,8 @@ export default async function CaseLmsPage({
           </section>
         </div>
       </div>
-    </div>
+      )}
+    </CasePageShell>
   );
 }
 

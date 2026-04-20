@@ -15,10 +15,84 @@ import {
 import type { TemplateType } from "@/server/repositories/message-templates";
 import { getCase } from "@/server/repositories/cases";
 import { createClient } from "@/lib/supabase/server";
+import { writeAuditLog } from "@/server/repositories/audit-log";
+import {
+  getOptionalFeatureUnavailableMessage,
+  isMissingSupabaseRelationError,
+} from "@/lib/supabase/errors";
 
 export interface ActionResult {
   error?: string;
   success?: boolean;
+}
+
+// ---------------------------------------------------------------
+// ご案内書ファイルアップロード
+// ---------------------------------------------------------------
+export async function uploadGuidanceFileAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  const user = await getCurrentUserProfile();
+  if (!user) return { error: "認証が必要です。" };
+
+  requirePermission(user.roleCode, PERMISSIONS.CASE_EDIT);
+
+  const caseId = String(formData.get("caseId") ?? "").trim();
+  if (!caseId) return { error: "案件IDが不正です。" };
+
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0)
+    return { error: "ファイルを選択してください。" };
+
+  const allowed = ["application/pdf", "image/jpeg", "image/png"];
+  if (!allowed.includes(file.type))
+    return { error: "PDF・JPEG・PNGのみアップロードできます。" };
+
+  const safeFileName = file.name.replace(/[/\\]/g, "_");
+  const filePath = `${caseId}/${Date.now()}_${safeFileName}`;
+
+  try {
+    const supabase = await createClient();
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const { error: storageError } = await supabase.storage
+      .from("guidance-files")
+      .upload(filePath, buffer, { contentType: file.type });
+    if (storageError) throw new Error(storageError.message);
+
+    const { error: dbError } = await supabase
+      .from("case_guidance_files")
+      .insert({
+        case_id: caseId,
+        file_path: filePath,
+        file_name: file.name,
+        uploaded_by: user.id,
+      });
+    if (dbError) {
+      await supabase.storage.from("guidance-files").remove([filePath]);
+      if (isMissingSupabaseRelationError(dbError, ["case_guidance_files"])) {
+        return { error: getOptionalFeatureUnavailableMessage("開始案内") };
+      }
+      throw new Error(dbError.message);
+    }
+
+    await writeAuditLog({
+      userId: user.id,
+      action: "document_upload",
+      targetType: "case_guidance_files",
+      metadata: { caseId, fileName: file.name },
+    });
+  } catch (err) {
+    return {
+      error:
+        err instanceof Error
+          ? err.message
+          : "ご案内書のアップロードに失敗しました。",
+    };
+  }
+
+  revalidatePath(`/cases/${caseId}/messages`);
+  return { success: true };
 }
 
 // ---------------------------------------------------------------
@@ -33,18 +107,22 @@ export async function sendMessageAction(
 
   requirePermission(user.roleCode, PERMISSIONS.CASE_EDIT);
 
-  const caseId       = String(formData.get("caseId") ?? "").trim();
-  const templateId   = String(formData.get("templateId") ?? "").trim() || undefined;
-  const templateType = String(formData.get("templateType") ?? "other").trim() as TemplateType;
-  const subject      = String(formData.get("subject") ?? "").trim();
-  const body         = String(formData.get("body") ?? "").trim();
-  const sentTo       = String(formData.get("sentTo") ?? "").trim() || undefined;
-  const sendMethod   = (String(formData.get("sendMethod") ?? "manual").trim() || "manual") as "email" | "manual" | "lark";
-  const note         = String(formData.get("note") ?? "").trim() || undefined;
+  const caseId = String(formData.get("caseId") ?? "").trim();
+  const templateId =
+    String(formData.get("templateId") ?? "").trim() || undefined;
+  const templateType = String(
+    formData.get("templateType") ?? "other"
+  ).trim() as TemplateType;
+  const subject = String(formData.get("subject") ?? "").trim();
+  const body = String(formData.get("body") ?? "").trim();
+  const sentTo = String(formData.get("sentTo") ?? "").trim() || undefined;
+  const sendMethod = (String(formData.get("sendMethod") ?? "manual").trim() ||
+    "manual") as "email" | "manual" | "lark";
+  const note = String(formData.get("note") ?? "").trim() || undefined;
 
-  if (!caseId)   return { error: "案件IDが不正です。" };
-  if (!subject)  return { error: "件名を入力してください。" };
-  if (!body)     return { error: "本文を入力してください。" };
+  if (!caseId) return { error: "案件IDが不正です。" };
+  if (!subject) return { error: "件名を入力してください。" };
+  if (!body) return { error: "本文を入力してください。" };
 
   try {
     await recordSentMessage({
@@ -59,7 +137,10 @@ export async function sendMessageAction(
       note,
     });
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "送信履歴の記録に失敗しました。" };
+    return {
+      error:
+        err instanceof Error ? err.message : "送信履歴の記録に失敗しました。",
+    };
   }
 
   revalidatePath(`/cases/${caseId}/messages`);
@@ -77,7 +158,7 @@ export async function previewMessageAction(
   const user = await getCurrentUserProfile();
   if (!user) return { error: "認証が必要です。" };
 
-  const caseId     = String(formData.get("caseId") ?? "").trim();
+  const caseId = String(formData.get("caseId") ?? "").trim();
   const templateId = String(formData.get("templateId") ?? "").trim();
 
   if (!caseId || !templateId) return { error: "パラメータが不正です。" };
@@ -102,16 +183,16 @@ export async function previewMessageAction(
   if (!template) return { error: "テンプレートが見つかりません。" };
 
   const placeholders = {
-    company_name:        caseData.organizationName,
-    case_name:           caseData.caseName,
-    contact_name:        (contacts as { name?: string } | null)?.name ?? "",
-    acceptance_date:     caseData.acceptanceDate ?? "",
+    company_name: caseData.organizationName,
+    case_name: caseData.caseName,
+    contact_name: (contacts as { name?: string } | null)?.name ?? "",
+    acceptance_date: caseData.acceptanceDate ?? "",
     training_start_date: caseData.plannedStartDate ?? "",
-    training_end_date:   caseData.plannedEndDate ?? "",
+    training_end_date: caseData.plannedEndDate ?? "",
   };
 
   return {
     subject: applyPlaceholders(template.subject, placeholders),
-    body:    applyPlaceholders(template.body, placeholders),
+    body: applyPlaceholders(template.body, placeholders),
   };
 }

@@ -11,6 +11,11 @@ interface SubsidyProgram {
   name: string;
 }
 
+interface VideoCourse {
+  id: string;
+  name: string;
+}
+
 interface User {
   id: string;
   displayName: string;
@@ -21,6 +26,7 @@ interface InitialValues {
   organizationId: string;
   organizationName: string;
   subsidyProgramId: string | null;
+  videoCourseId: string | null;
   contractDate: string | null;
   plannedStartDate: string | null;
   plannedEndDate: string | null;
@@ -35,23 +41,69 @@ interface Props {
   initialValues: InitialValues;
 }
 
+function asArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
 export function CaseEditForm({ caseId, initialValues }: Props) {
   const router = useRouter();
   const [state, action, isPending] = useActionState(updateCaseAction, null);
   const [programs, setPrograms] = useState<SubsidyProgram[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
+  const [loadedCourses, setLoadedCourses] = useState<VideoCourse[]>([]);
+  const [loadedCourseProgramId, setLoadedCourseProgramId] = useState("");
+  const [users, setUsers]       = useState<User[]>([]);
+  const [selectedProgramId, setSelectedProgramId] = useState(
+    initialValues.subsidyProgramId ?? ""
+  );
+  const [selectedCourseId, setSelectedCourseId] = useState(
+    initialValues.videoCourseId ?? ""
+  );
+  const courses =
+    selectedProgramId !== "" && loadedCourseProgramId === selectedProgramId
+      ? loadedCourses
+      : [];
 
   useEffect(() => {
     fetch("/api/master/subsidy-programs")
       .then((r) => r.json())
-      .then((d: SubsidyProgram[]) => setPrograms(d ?? []))
+      .then((d) => setPrograms(asArray<SubsidyProgram>(d)))
       .catch(() => {});
 
     fetch("/api/master/users")
       .then((r) => r.json())
-      .then((d: User[]) => setUsers(d ?? []))
+      .then((d) => setUsers(asArray<User>(d)))
       .catch(() => {});
   }, []);
+
+  // 助成金種別変更時にコース一覧を再取得
+  useEffect(() => {
+    if (!selectedProgramId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    fetch(`/api/master/video-courses?subsidyProgramId=${selectedProgramId}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return;
+        setLoadedCourses(asArray<VideoCourse>(d));
+        setLoadedCourseProgramId(selectedProgramId);
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedProgramId]);
+
+  // 助成金種別が変わったらコース選択をリセット（初期値ロード後は維持）
+  const handleProgramChange = (programId: string) => {
+    if (programId !== selectedProgramId) {
+      setSelectedCourseId("");
+    }
+    setSelectedProgramId(programId);
+  };
 
   useEffect(() => {
     if (state?.success) {
@@ -66,7 +118,7 @@ export function CaseEditForm({ caseId, initialValues }: Props) {
         <Link href="/cases" className="hover:text-[var(--color-accent)]">案件管理</Link>
         <span>/</span>
         <Link href={`/cases/${caseId}`} className="hover:text-[var(--color-accent)]">
-          {initialValues.caseName}
+          {initialValues.caseName || "案件詳細"}
         </Link>
         <span>/</span>
         <span>編集</span>
@@ -93,23 +145,13 @@ export function CaseEditForm({ caseId, initialValues }: Props) {
           />
         </Field>
 
-        {/* 案件名 */}
-        <Field label="案件名" required>
-          <input
-            name="caseName"
-            type="text"
-            required
-            defaultValue={initialValues.caseName}
-            placeholder="例: ○○社 人材開発支援助成金 2026年度"
-            {...inputClass()}
-          />
-        </Field>
-
-        {/* 助成金種別 */}
-        <Field label="助成金種別">
+        {/* 助成金種別（1段目） */}
+        <Field label="助成金種別" required>
           <select
             name="subsidyProgramId"
-            defaultValue={initialValues.subsidyProgramId ?? ""}
+            required
+            value={selectedProgramId}
+            onChange={(e) => handleProgramChange(e.target.value)}
             {...selectClass()}
           >
             <option value="">選択してください</option>
@@ -117,6 +159,30 @@ export function CaseEditForm({ caseId, initialValues }: Props) {
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
+        </Field>
+
+        {/* コース（2段目・助成金種別連動） */}
+        <Field label="コース" required>
+          <select
+            name="videoCourseId"
+            required
+            value={selectedCourseId}
+            onChange={(e) => setSelectedCourseId(e.target.value)}
+            disabled={!selectedProgramId}
+            {...selectClass(selectedProgramId ? undefined : "bg-[var(--color-bg-secondary)] text-[var(--color-text-muted)]")}
+          >
+            <option value="">
+              {selectedProgramId ? "コースを選択してください" : "先に助成金種別を選択してください"}
+            </option>
+            {courses.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+          {selectedProgramId && courses.length === 0 && (
+            <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+              この助成金種別に紐付くコースが登録されていません。
+            </p>
+          )}
         </Field>
 
         {/* 担当者 */}
@@ -235,9 +301,9 @@ function inputClass() {
   };
 }
 
-function selectClass() {
+function selectClass(overrideClass?: string) {
   return {
-    className: [
+    className: overrideClass ?? [
       "w-full h-9 px-3 text-sm",
       "border border-[var(--color-border)] rounded-[var(--radius-sm)]",
       "bg-white text-[var(--color-text)]",

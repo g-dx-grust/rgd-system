@@ -3,6 +3,10 @@
  */
 
 import { createClient } from "@/lib/supabase/server";
+import {
+  isMissingSupabaseColumnError,
+  isMissingSupabaseRelationError,
+} from "@/lib/supabase/errors";
 import type { CaseStatus } from "@/lib/constants/case-status";
 
 export interface CaseRow {
@@ -13,6 +17,10 @@ export interface CaseRow {
   caseName: string;
   subsidyProgramId: string | null;
   subsidyProgramName: string | null;
+  videoCourseId: string | null;
+  videoCourseName: string | null;
+  operatingCompanyId: string;
+  operatingCompanyName: string;
   status: CaseStatus;
   contractDate: string | null;
   plannedStartDate: string | null;
@@ -36,6 +44,7 @@ export interface CaseListFilters {
   status?: CaseStatus;
   ownerUserId?: string;
   organizationId?: string;
+  operatingCompanyId?: string;
   search?: string;
   page?: number;
   perPage?: number;
@@ -56,8 +65,10 @@ export interface CaseListResult {
 
 export interface CreateCaseInput {
   organizationId: string;
+  operatingCompanyId: string;
   caseName: string;
   subsidyProgramId?: string;
+  videoCourseId?: string;
   contractDate?: string;
   plannedStartDate?: string;
   plannedEndDate?: string;
@@ -71,6 +82,7 @@ export interface CreateCaseInput {
 export interface UpdateCaseInput {
   caseName?: string;
   subsidyProgramId?: string;
+  videoCourseId?: string | null;
   contractDate?: string;
   plannedStartDate?: string;
   plannedEndDate?: string;
@@ -80,35 +92,69 @@ export interface UpdateCaseInput {
   summary?: string;
 }
 
-// ---------------------------------------------------------------
-// 案件一覧（フィルタ・ページネーション）
-// ---------------------------------------------------------------
-export async function listCases(filters: CaseListFilters = {}): Promise<CaseListResult> {
-  const supabase = await createClient();
-  const page    = filters.page    ?? 1;
-  const perPage = filters.perPage ?? 20;
-  const offset  = (page - 1) * perPage;
+const CASE_SELECT_FIELDS = `
+  id, case_code, case_name, status,
+  contract_date, planned_start_date, planned_end_date,
+  pre_application_due_date, final_application_due_date,
+  acceptance_date, owner_user_id, summary, created_at, updated_at,
+  organization_id,
+  subsidy_program_id,
+  video_course_id,
+  operating_company_id
+`;
 
+const CASE_SELECT_FIELDS_LEGACY = `
+  id, case_code, case_name, status,
+  contract_date, planned_start_date, planned_end_date,
+  pre_application_due_date, final_application_due_date,
+  acceptance_date, owner_user_id, summary, created_at, updated_at,
+  organization_id,
+  subsidy_program_id
+`;
+
+type CaseQueryResult = {
+  data: Record<string, unknown>[] | null;
+  error: { message?: string | null } | null;
+  count: number | null;
+};
+
+type CaseSingleQueryResult = {
+  data: Record<string, unknown> | null;
+  error: { message?: string | null } | null;
+};
+
+type CaseLookupMaps = {
+  ownerNames: Map<string, string>;
+  organizationNames: Map<string, string>;
+  subsidyProgramNames: Map<string, string>;
+  videoCourseNames: Map<string, string>;
+  operatingCompanyNames: Map<string, string>;
+};
+
+function hasOptionalCaseColumnError(error: unknown): boolean {
+  return isMissingSupabaseColumnError(error, [
+    "video_course_id",
+    "operating_company_id",
+  ]);
+}
+
+function buildListCasesQuery(
+  supabase: SupabaseClient,
+  filters: CaseListFilters,
+  selectFields: string,
+  supportsOperatingCompanyFilter: boolean
+) {
   let query = supabase
     .from("cases")
-    .select(
-      `
-      id, case_code, case_name, status,
-      contract_date, planned_start_date, planned_end_date,
-      pre_application_due_date, final_application_due_date,
-      acceptance_date, owner_user_id, summary, created_at, updated_at,
-      organization_id,
-      organizations ( legal_name ),
-      subsidy_program_id,
-      subsidy_programs ( name )
-      `,
-      { count: "exact" }
-    )
+    .select(selectFields, { count: "exact" })
     .is("deleted_at", null);
 
-  if (filters.status)         query = query.eq("status", filters.status);
-  if (filters.ownerUserId)    query = query.eq("owner_user_id", filters.ownerUserId);
-  if (filters.organizationId) query = query.eq("organization_id", filters.organizationId);
+  if (filters.status)             query = query.eq("status", filters.status);
+  if (filters.ownerUserId)        query = query.eq("owner_user_id", filters.ownerUserId);
+  if (filters.organizationId)     query = query.eq("organization_id", filters.organizationId);
+  if (supportsOperatingCompanyFilter && filters.operatingCompanyId) {
+    query = query.eq("operating_company_id", filters.operatingCompanyId);
+  }
   if (filters.search) {
     query = query.or(`case_name.ilike.%${filters.search}%,case_code.ilike.%${filters.search}%`);
   }
@@ -128,20 +174,84 @@ export async function listCases(filters: CaseListFilters = {}): Promise<CaseList
       .not("status", "in", "(completed,cancelled)");
   }
 
-  const { data, error, count } = await query
+  return query;
+}
+
+async function executeListCasesQuery(
+  supabase: SupabaseClient,
+  filters: CaseListFilters,
+  offset: number,
+  perPage: number
+): Promise<CaseQueryResult> {
+  let result = await buildListCasesQuery(supabase, filters, CASE_SELECT_FIELDS, true)
     .order("updated_at", { ascending: false })
     .range(offset, offset + perPage - 1);
 
-  if (error) throw new Error(error.message);
+  if (result.error && hasOptionalCaseColumnError(result.error)) {
+    result = await buildListCasesQuery(
+      supabase,
+      filters,
+      CASE_SELECT_FIELDS_LEGACY,
+      false
+    )
+      .order("updated_at", { ascending: false })
+      .range(offset, offset + perPage - 1);
+  }
+
+  return {
+    data: (result.data as Record<string, unknown>[] | null) ?? null,
+    error: result.error,
+    count: result.count ?? null,
+  };
+}
+
+async function executeSingleCaseQuery(
+  supabase: SupabaseClient,
+  id: string
+): Promise<CaseSingleQueryResult> {
+  let result = await supabase
+    .from("cases")
+    .select(CASE_SELECT_FIELDS)
+    .eq("id", id)
+    .is("deleted_at", null)
+    .single();
+
+  if (result.error && hasOptionalCaseColumnError(result.error)) {
+    result = await supabase
+      .from("cases")
+      .select(CASE_SELECT_FIELDS_LEGACY)
+      .eq("id", id)
+      .is("deleted_at", null)
+      .single();
+  }
+
+  return {
+    data: (result.data as Record<string, unknown> | null) ?? null,
+    error: result.error,
+  };
+}
+
+// ---------------------------------------------------------------
+// 案件一覧（フィルタ・ページネーション）
+// ---------------------------------------------------------------
+export async function listCases(filters: CaseListFilters = {}): Promise<CaseListResult> {
+  const supabase = await createClient();
+  const page    = filters.page    ?? 1;
+  const perPage = filters.perPage ?? 20;
+  const offset  = (page - 1) * perPage;
+
+  const { data, error, count } = await executeListCasesQuery(
+    supabase,
+    filters,
+    offset,
+    perPage
+  );
+
+  if (error) throw new Error(error.message ?? "案件一覧の取得に失敗しました");
 
   const rows = data ?? [];
   const caseIds = rows.map((r) => String(r["id"]));
-
-  // owner_user_id → display_name マップを別クエリで取得
-  const ownerUserIds = [...new Set(
-    rows.map((r) => r["owner_user_id"]).filter((id): id is string => !!id)
-  )];
-  const ownerNameMap = await fetchOwnerNameMap(supabase, ownerUserIds);
+  const lookupMaps = await fetchCaseLookupMaps(supabase, rows);
 
   // 補足情報を一括取得
   const [docSummaryMap, taskCountMap] = caseIds.length > 0
@@ -153,7 +263,7 @@ export async function listCases(filters: CaseListFilters = {}): Promise<CaseList
 
   return {
     cases: rows.map((r) => {
-      const base = mapCase(r, ownerNameMap);
+      const base = mapCase(r, lookupMaps);
       base.insufficientDocCount = docSummaryMap.get(base.id) ?? 0;
       base.openTaskCount        = taskCountMap.get(base.id) ?? 0;
       // 次回期限: pre と final のうち未来で近い方
@@ -172,6 +282,49 @@ export async function listCases(filters: CaseListFilters = {}): Promise<CaseList
 
 type SupabaseClient = Awaited<ReturnType<typeof import("@/lib/supabase/server").createClient>>;
 
+async function fetchCaseLookupMaps(
+  supabase: SupabaseClient,
+  rows: Record<string, unknown>[]
+): Promise<CaseLookupMaps> {
+  const ownerUserIds = [...new Set(
+    rows.map((r) => r["owner_user_id"]).filter((id): id is string => !!id)
+  )];
+  const organizationIds = [...new Set(
+    rows.map((r) => r["organization_id"]).filter((id): id is string => !!id)
+  )];
+  const subsidyProgramIds = [...new Set(
+    rows.map((r) => r["subsidy_program_id"]).filter((id): id is string => !!id)
+  )];
+  const videoCourseIds = [...new Set(
+    rows.map((r) => r["video_course_id"]).filter((id): id is string => !!id)
+  )];
+  const operatingCompanyIds = [...new Set(
+    rows.map((r) => r["operating_company_id"]).filter((id): id is string => !!id)
+  )];
+
+  const [
+    ownerNames,
+    organizationNames,
+    subsidyProgramNames,
+    videoCourseNames,
+    operatingCompanyNames,
+  ] = await Promise.all([
+    fetchOwnerNameMap(supabase, ownerUserIds),
+    fetchOrganizationNameMap(supabase, organizationIds),
+    fetchSubsidyProgramNameMap(supabase, subsidyProgramIds),
+    fetchVideoCourseNameMap(supabase, videoCourseIds),
+    fetchOperatingCompanyNameMap(supabase, operatingCompanyIds),
+  ]);
+
+  return {
+    ownerNames,
+    organizationNames,
+    subsidyProgramNames,
+    videoCourseNames,
+    operatingCompanyNames,
+  };
+}
+
 /** owner_user_id → display_name のマップを user_profiles から取得 */
 async function fetchOwnerNameMap(
   supabase: SupabaseClient,
@@ -188,6 +341,100 @@ async function fetchOwnerNameMap(
   for (const row of data ?? []) {
     if (row["id"] && row["display_name"]) {
       map.set(String(row["id"]), String(row["display_name"]));
+    }
+  }
+  return map;
+}
+
+async function fetchOrganizationNameMap(
+  supabase: SupabaseClient,
+  organizationIds: string[]
+): Promise<Map<string, string>> {
+  if (organizationIds.length === 0) return new Map();
+
+  const { data } = await supabase
+    .from("organizations")
+    .select("id, legal_name")
+    .in("id", organizationIds);
+
+  const map = new Map<string, string>();
+  for (const row of data ?? []) {
+    if (row["id"] && row["legal_name"]) {
+      map.set(String(row["id"]), String(row["legal_name"]));
+    }
+  }
+  return map;
+}
+
+async function fetchSubsidyProgramNameMap(
+  supabase: SupabaseClient,
+  subsidyProgramIds: string[]
+): Promise<Map<string, string>> {
+  if (subsidyProgramIds.length === 0) return new Map();
+
+  const { data } = await supabase
+    .from("subsidy_programs")
+    .select("id, name")
+    .in("id", subsidyProgramIds);
+
+  const map = new Map<string, string>();
+  for (const row of data ?? []) {
+    if (row["id"] && row["name"]) {
+      map.set(String(row["id"]), String(row["name"]));
+    }
+  }
+  return map;
+}
+
+async function fetchVideoCourseNameMap(
+  supabase: SupabaseClient,
+  videoCourseIds: string[]
+): Promise<Map<string, string>> {
+  if (videoCourseIds.length === 0) return new Map();
+
+  const { data, error } = await supabase
+    .from("video_courses")
+    .select("id, name")
+    .in("id", videoCourseIds);
+
+  if (error) {
+    if (isMissingSupabaseRelationError(error, ["video_courses"])) {
+      return new Map();
+    }
+    throw new Error(error.message);
+  }
+
+  const map = new Map<string, string>();
+  for (const row of data ?? []) {
+    if (row["id"] && row["name"]) {
+      map.set(String(row["id"]), String(row["name"]));
+    }
+  }
+  return map;
+}
+
+async function fetchOperatingCompanyNameMap(
+  supabase: SupabaseClient,
+  operatingCompanyIds: string[]
+): Promise<Map<string, string>> {
+  if (operatingCompanyIds.length === 0) return new Map();
+
+  const { data, error } = await supabase
+    .from("operating_companies")
+    .select("id, name")
+    .in("id", operatingCompanyIds);
+
+  if (error) {
+    if (isMissingSupabaseRelationError(error, ["operating_companies"])) {
+      return new Map();
+    }
+    throw new Error(error.message);
+  }
+
+  const map = new Map<string, string>();
+  for (const row of data ?? []) {
+    if (row["id"] && row["name"]) {
+      map.set(String(row["id"]), String(row["name"]));
     }
   }
   return map;
@@ -243,29 +490,12 @@ function nearestFutureDue(a: string | null, b: string | null): string | null {
 export async function getCase(id: string): Promise<CaseRow | null> {
   const supabase = await createClient();
 
-  const { data, error } = await supabase
-    .from("cases")
-    .select(
-      `
-      id, case_code, case_name, status,
-      contract_date, planned_start_date, planned_end_date,
-      pre_application_due_date, final_application_due_date,
-      acceptance_date, owner_user_id, summary, created_at, updated_at,
-      organization_id,
-      organizations ( legal_name ),
-      subsidy_program_id,
-      subsidy_programs ( name )
-      `
-    )
-    .eq("id", id)
-    .is("deleted_at", null)
-    .single();
+  const { data, error } = await executeSingleCaseQuery(supabase, id);
 
   if (error || !data) return null;
 
-  const ownerUserIds = data["owner_user_id"] ? [String(data["owner_user_id"])] : [];
-  const ownerNameMap = await fetchOwnerNameMap(supabase, ownerUserIds);
-  return mapCase(data, ownerNameMap);
+  const lookupMaps = await fetchCaseLookupMaps(supabase, [data]);
+  return mapCase(data, lookupMaps);
 }
 
 // ---------------------------------------------------------------
@@ -277,38 +507,28 @@ export async function createCase(input: CreateCaseInput): Promise<CaseRow> {
   const { data, error } = await supabase
     .from("cases")
     .insert({
-      organization_id:           input.organizationId,
-      case_name:                 input.caseName,
-      subsidy_program_id:        input.subsidyProgramId ?? null,
-      status:                    "case_received",
-      contract_date:             input.contractDate ?? null,
-      planned_start_date:        input.plannedStartDate ?? null,
-      planned_end_date:          input.plannedEndDate ?? null,
-      pre_application_due_date:  input.preApplicationDueDate ?? null,
-      final_application_due_date:input.finalApplicationDueDate ?? null,
-      owner_user_id:             input.ownerUserId ?? null,
-      summary:                   input.summary ?? null,
-      created_by:                input.createdBy,
+      organization_id:            input.organizationId,
+      operating_company_id:       input.operatingCompanyId,
+      case_name:                  input.caseName,
+      subsidy_program_id:         input.subsidyProgramId ?? null,
+      video_course_id:            input.videoCourseId ?? null,
+      status:                     "case_received",
+      contract_date:              input.contractDate ?? null,
+      planned_start_date:         input.plannedStartDate ?? null,
+      planned_end_date:           input.plannedEndDate ?? null,
+      pre_application_due_date:   input.preApplicationDueDate ?? null,
+      final_application_due_date: input.finalApplicationDueDate ?? null,
+      owner_user_id:              input.ownerUserId ?? null,
+      summary:                    input.summary ?? null,
+      created_by:                 input.createdBy,
     })
-    .select(
-      `
-      id, case_code, case_name, status,
-      contract_date, planned_start_date, planned_end_date,
-      pre_application_due_date, final_application_due_date,
-      acceptance_date, owner_user_id, summary, created_at, updated_at,
-      organization_id,
-      organizations ( legal_name ),
-      subsidy_program_id,
-      subsidy_programs ( name )
-      `
-    )
+    .select(CASE_SELECT_FIELDS)
     .single();
 
   if (error || !data) throw new Error(error?.message ?? "案件の作成に失敗しました");
 
-  const ownerUserIds = data["owner_user_id"] ? [String(data["owner_user_id"])] : [];
-  const ownerNameMap = await fetchOwnerNameMap(supabase, ownerUserIds);
-  return mapCase(data, ownerNameMap);
+  const lookupMaps = await fetchCaseLookupMaps(supabase, [data as Record<string, unknown>]);
+  return mapCase(data as Record<string, unknown>, lookupMaps);
 }
 
 // ---------------------------------------------------------------
@@ -320,6 +540,7 @@ export async function updateCase(id: string, input: UpdateCaseInput): Promise<vo
   const updates: Record<string, unknown> = {};
   if (input.caseName              !== undefined) updates["case_name"]                  = input.caseName;
   if (input.subsidyProgramId      !== undefined) updates["subsidy_program_id"]         = input.subsidyProgramId;
+  if (input.videoCourseId         !== undefined) updates["video_course_id"]            = input.videoCourseId;
   if (input.contractDate          !== undefined) updates["contract_date"]              = input.contractDate;
   if (input.plannedStartDate      !== undefined) updates["planned_start_date"]         = input.plannedStartDate;
   if (input.plannedEndDate        !== undefined) updates["planned_end_date"]           = input.plannedEndDate;
@@ -365,21 +586,39 @@ export async function deleteCase(id: string): Promise<void> {
 // ---------------------------------------------------------------
 // Mapper
 // ---------------------------------------------------------------
-function mapCase(row: Record<string, unknown>, ownerNameMap?: Map<string, string>): CaseRow {
-  const org = row["organizations"];
-  const sp  = row["subsidy_programs"];
+function mapCase(
+  row: Record<string, unknown>,
+  lookupMaps: CaseLookupMaps
+): CaseRow {
   const ownerUserId = row["owner_user_id"] != null ? String(row["owner_user_id"]) : null;
+  const organizationId = row["organization_id"] != null ? String(row["organization_id"]) : "";
+  const subsidyProgramId = row["subsidy_program_id"] != null ? String(row["subsidy_program_id"]) : null;
+  const videoCourseId = row["video_course_id"] != null ? String(row["video_course_id"]) : null;
+  const operatingCompanyId = row["operating_company_id"] != null
+    ? String(row["operating_company_id"])
+    : "";
+  const videoCourseName = videoCourseId
+    ? (lookupMaps.videoCourseNames.get(videoCourseId) ?? null)
+    : null;
+  const subsidyProgramName = subsidyProgramId
+    ? (lookupMaps.subsidyProgramNames.get(subsidyProgramId) ?? null)
+    : null;
+  const operatingCompanyName = operatingCompanyId
+    ? (lookupMaps.operatingCompanyNames.get(operatingCompanyId) ?? "")
+    : "";
 
   return {
     id:                      String(row["id"]),
     caseCode:                String(row["case_code"]),
-    organizationId:          String(row["organization_id"]),
-    organizationName:        org && typeof org === "object" && "legal_name" in org
-      ? String((org as Record<string, unknown>)["legal_name"]) : "",
-    caseName:                String(row["case_name"]),
-    subsidyProgramId:        row["subsidy_program_id"] != null ? String(row["subsidy_program_id"]) : null,
-    subsidyProgramName:      sp && typeof sp === "object" && "name" in sp
-      ? String((sp as Record<string, unknown>)["name"]) : null,
+    organizationId,
+    organizationName:        lookupMaps.organizationNames.get(organizationId) ?? "",
+    caseName:                row["case_name"] != null ? String(row["case_name"]) : "",
+    subsidyProgramId,
+    subsidyProgramName,
+    videoCourseId,
+    videoCourseName,
+    operatingCompanyId,
+    operatingCompanyName,
     status:                  String(row["status"]) as CaseStatus,
     contractDate:            row["contract_date"] != null ? String(row["contract_date"]) : null,
     plannedStartDate:        row["planned_start_date"] != null ? String(row["planned_start_date"]) : null,
@@ -388,7 +627,7 @@ function mapCase(row: Record<string, unknown>, ownerNameMap?: Map<string, string
     finalApplicationDueDate: row["final_application_due_date"] != null ? String(row["final_application_due_date"]) : null,
     acceptanceDate:          row["acceptance_date"] != null ? String(row["acceptance_date"]) : null,
     ownerUserId,
-    ownerName:               ownerUserId && ownerNameMap ? (ownerNameMap.get(ownerUserId) ?? null) : null,
+    ownerName:               ownerUserId ? (lookupMaps.ownerNames.get(ownerUserId) ?? null) : null,
     summary:                 row["summary"] != null ? String(row["summary"]) : null,
     createdAt:               String(row["created_at"]),
     updatedAt:               String(row["updated_at"]),

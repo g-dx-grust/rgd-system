@@ -5,7 +5,6 @@
  * 受講者個別タブは廃止し、案件単位で一元管理する。
  */
 
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUserProfile } from "@/lib/auth/session";
 import {
@@ -15,7 +14,7 @@ import {
 } from "@/server/repositories/documents";
 import { getCase } from "@/server/repositories/cases";
 import { CompletionBadge } from "@/components/domain/documents/CompletionBadge";
-import { CaseTabNav } from "@/components/domain";
+import { CasePageShell } from "@/components/domain";
 import { DocumentTabClient } from "./DocumentTabClient";
 
 interface Props {
@@ -44,31 +43,21 @@ export default async function DocumentsPage({ params }: Props) {
   if (!caseData) notFound();
 
   return (
-    <div className="space-y-5">
-      {/* パンくず */}
-      <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
-        <Link href="/cases" className="hover:text-[var(--color-accent)]">案件管理</Link>
-        <span>/</span>
-        <Link href={`/cases/${caseId}`} className="hover:text-[var(--color-accent)]">
-          {caseData.caseCode}
-        </Link>
-        <span>/</span>
-        <span>書類管理</span>
-      </div>
-
-      {/* ページタイトル */}
-      <h1 className="text-[22px] font-semibold text-[var(--color-text)]">
-        {caseData.caseName}
-        <span className="ml-2 text-base font-normal text-[var(--color-text-muted)]">書類管理</span>
-      </h1>
-
-      {/* タブナビ */}
-      <CaseTabNav caseId={caseId} activeTab="documents" />
-
-      {/* 全体充足率 */}
+    <CasePageShell
+      caseId={caseId}
+      caseCode={caseData.caseCode}
+      caseName={caseData.caseName}
+      caseStatus={caseData.status}
+      operatingCompanyName={caseData.operatingCompanyName}
+      organizationId={caseData.organizationId}
+      organizationName={caseData.organizationName}
+      activeTab="documents"
+      sectionTitle="書類管理"
+      sectionDescription="案件単位で必要書類の充足状況を確認します。"
+    >
       {summary && (
-        <div className="bg-white border border-[var(--color-border)] rounded-[var(--radius-md)] px-4 py-3">
-          <div className="flex items-center justify-between mb-2">
+        <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-white px-4 py-3">
+          <div className="mb-2 flex items-center justify-between">
             <span className="text-sm font-medium text-[var(--color-text)]">
               必須書類充足率
             </span>
@@ -80,7 +69,6 @@ export default async function DocumentsPage({ params }: Props) {
         </div>
       )}
 
-      {/* 書類管理クライアントコンポーネント */}
       <DocumentTabClient
         caseId={caseId}
         organizationId={caseData.organizationId}
@@ -88,6 +76,6 @@ export default async function DocumentsPage({ params }: Props) {
         documentTypes={documentTypes}
         userRoleCode={profile.roleCode}
       />
-    </div>
+    </CasePageShell>
   );
 }

@@ -1,25 +1,49 @@
 /**
  * 案件詳細 — 開始案内タブ
  *
- * テンプレートから開始案内を作成し、送信履歴を管理する。
+ * ご案内書ファイルの保管・管理。
  */
 
 import { notFound, redirect } from "next/navigation";
-import Link from "next/link";
 import { getCurrentUserProfile } from "@/lib/auth/session";
 import { can, PERMISSIONS } from "@/lib/rbac";
-import {
-  listMessageTemplates,
-  listSentMessages,
-  TEMPLATE_TYPE_LABELS,
-} from "@/server/repositories/message-templates";
-import type { SentMessageRow } from "@/server/repositories/message-templates";
 import { getCase } from "@/server/repositories/cases";
-import { MessageComposeClient } from "./MessageComposeClient";
-import { CaseTabNav } from "@/components/domain";
+import { createClient } from "@/lib/supabase/server";
+import { isMissingSupabaseRelationError } from "@/lib/supabase/errors";
+import { GuidanceFileClient } from "./GuidanceFileClient";
+import { CasePageShell } from "@/components/domain";
+
+type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
+type GuidanceFileRow = {
+  id: string;
+  file_path: string;
+  file_name: string;
+  uploaded_at: string;
+};
 
 interface Props {
   params: Promise<{ id: string }>;
+}
+
+async function listGuidanceFiles(
+  supabase: SupabaseClient,
+  caseId: string
+): Promise<{ available: boolean; rows: GuidanceFileRow[] }> {
+  const { data, error } = await supabase
+    .from("case_guidance_files")
+    .select("id, file_path, file_name, uploaded_at")
+    .eq("case_id", caseId)
+    .is("deleted_at", null)
+    .order("uploaded_at", { ascending: false });
+
+  if (error) {
+    if (isMissingSupabaseRelationError(error, ["case_guidance_files"])) {
+      return { available: false, rows: [] };
+    }
+    throw new Error(error.message);
+  }
+
+  return { available: true, rows: (data ?? []) as GuidanceFileRow[] };
 }
 
 export default async function MessagesPage({ params }: Props) {
@@ -28,131 +52,73 @@ export default async function MessagesPage({ params }: Props) {
 
   const { id: caseId } = await params;
 
-  const [caseData, templates, sentMessages] = await Promise.all([
+  const supabase = await createClient();
+
+  const [caseData, guidanceFiles] = await Promise.all([
     getCase(caseId),
-    listMessageTemplates(),
-    listSentMessages(caseId),
+    listGuidanceFiles(supabase, caseId),
   ]);
 
   if (!caseData) notFound();
 
-  const canSend = can(profile.roleCode, PERMISSIONS.CASE_EDIT);
+  const fileRows = guidanceFiles.rows;
 
-  // 開始案内テンプレートを先頭に表示
-  const startGuideTemplates = templates.filter((t) => t.templateType === "start_guide");
-  const otherTemplates      = templates.filter((t) => t.templateType !== "start_guide");
-  const sortedTemplates     = [...startGuideTemplates, ...otherTemplates];
+  const signedUrlMap: Record<string, string> = {};
+  if (guidanceFiles.available && fileRows.length > 0) {
+    const { data: signedUrls } = await supabase.storage
+      .from("guidance-files")
+      .createSignedUrls(
+        fileRows.map((r) => r.file_path),
+        3600
+      );
+    (signedUrls ?? []).forEach((s) => {
+      if (s.path && s.signedUrl) signedUrlMap[s.path] = s.signedUrl;
+    });
+  }
+
+  const files = fileRows.map((r) => ({
+    id: r.id,
+    fileName: r.file_name,
+    uploadedAt: r.uploaded_at,
+    signedUrl: signedUrlMap[r.file_path] ?? null,
+  }));
+
+  const canEdit = can(profile.roleCode, PERMISSIONS.CASE_EDIT);
 
   return (
-    <div className="space-y-5">
-      {/* パンくず */}
-      <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
-        <Link href="/cases" className="hover:text-[var(--color-accent)]">案件管理</Link>
-        <span>/</span>
-        <Link href={`/cases/${caseId}`} className="hover:text-[var(--color-accent)]">
-          {caseData.caseCode}
-        </Link>
-        <span>/</span>
-        <span>開始案内</span>
-      </div>
-
-      <h1 className="text-[22px] font-semibold text-[var(--color-text)]">
-        {caseData.caseName}
-        <span className="ml-2 text-base font-normal text-[var(--color-text-muted)]">開始案内</span>
-      </h1>
-
-      {/* タブナビ */}
-      <CaseTabNav caseId={caseId} activeTab="messages" />
-
-      {/* 受理日未登録の警告 */}
+    <CasePageShell
+      caseId={caseId}
+      caseCode={caseData.caseCode}
+      caseName={caseData.caseName}
+      caseStatus={caseData.status}
+      operatingCompanyName={caseData.operatingCompanyName}
+      organizationId={caseData.organizationId}
+      organizationName={caseData.organizationName}
+      activeTab="messages"
+      sectionTitle="開始案内"
+      sectionDescription="開始案内ファイルの保管と送付状況を管理します。"
+    >
       {!caseData.acceptanceDate && (
-        <div className="border border-[var(--color-warning)] bg-amber-50 rounded-[var(--radius-md)] px-4 py-3">
+        <div className="rounded-[var(--radius-md)] border border-[var(--color-warning)] bg-amber-50 px-4 py-3">
           <p className="text-sm text-amber-800">
-            受理日が登録されていません。受理日を登録してから開始案内を送付してください。
+            受理日が登録されていません。受理日を登録してから開始案内を行ってください。
           </p>
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* 左: テンプレート選択 + 送信フォーム */}
-        <div className="lg:col-span-2">
-          {canSend ? (
-            <MessageComposeClient
-              caseId={caseId}
-              templates={sortedTemplates}
-              caseInfo={{
-                caseName:          caseData.caseName,
-                organizationName:  caseData.organizationName,
-                acceptanceDate:    caseData.acceptanceDate,
-                plannedStartDate:  caseData.plannedStartDate,
-                plannedEndDate:    caseData.plannedEndDate,
-              }}
-            />
-          ) : (
-            <div className="border border-[var(--color-border)] rounded-[var(--radius-md)] p-4">
-              <p className="text-sm text-[var(--color-text-muted)]">
-                メッセージ送信の権限がありません。
-              </p>
-            </div>
-          )}
+      {canEdit ? (
+        <GuidanceFileClient
+          caseId={caseId}
+          files={files}
+          isFeatureAvailable={guidanceFiles.available}
+        />
+      ) : (
+        <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-4">
+          <p className="text-sm text-[var(--color-text-muted)]">
+            ご案内書の管理権限がありません。
+          </p>
         </div>
-
-        {/* 右: 送信履歴 */}
-        <div>
-          <section className="border border-[var(--color-border)] rounded-[var(--radius-md)] overflow-hidden">
-            <div className="px-4 py-3 bg-[var(--color-bg-secondary)] border-b border-[var(--color-border)]">
-              <h2 className="text-base font-semibold text-[var(--color-text)]">
-                送信履歴
-                <span className="ml-2 text-sm font-normal text-[var(--color-text-muted)]">
-                  ({sentMessages.length}件)
-                </span>
-              </h2>
-            </div>
-
-            {sentMessages.length === 0 ? (
-              <div className="py-8 text-center text-sm text-[var(--color-text-muted)]">
-                送信履歴はありません。
-              </div>
-            ) : (
-              <ul className="divide-y divide-[var(--color-border)]">
-                {sentMessages.map((msg) => (
-                  <SentMessageItem key={msg.id} msg={msg} />
-                ))}
-              </ul>
-            )}
-          </section>
-        </div>
-      </div>
-    </div>
+      )}
+    </CasePageShell>
   );
 }
-
-// ---------------------------------------------------------------
-// 送信履歴行
-// ---------------------------------------------------------------
-function SentMessageItem({ msg }: { msg: SentMessageRow }) {
-  const sentDate = new Date(msg.sentAt).toLocaleDateString("ja-JP", {
-    year: "numeric", month: "2-digit", day: "2-digit",
-  });
-  const templateLabel = TEMPLATE_TYPE_LABELS[msg.templateType as keyof typeof TEMPLATE_TYPE_LABELS]
-    ?? msg.templateType;
-
-  return (
-    <li className="px-4 py-3 space-y-0.5">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-medium text-[var(--color-text-muted)] shrink-0">
-          {templateLabel}
-        </span>
-        <span className="text-xs text-[var(--color-text-muted)]">{sentDate}</span>
-      </div>
-      <p className="text-sm font-medium text-[var(--color-text)] truncate">{msg.subject}</p>
-      {msg.sentTo && (
-        <p className="text-xs text-[var(--color-text-muted)]">宛先: {msg.sentTo}</p>
-      )}
-      {msg.sentByName && (
-        <p className="text-xs text-[var(--color-text-muted)]">送付者: {msg.sentByName}</p>
-      )}
-    </li>
-  );
-}
-

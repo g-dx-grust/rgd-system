@@ -9,13 +9,21 @@ interface UserOption {
   displayName: string;
 }
 
+interface OperatingCompanyOption {
+  id: string;
+  name: string;
+}
+
 interface Props {
   users: UserOption[];
+  operatingCompanies?: OperatingCompanyOption[];
   currentStatus: string;
   currentOwner: string;
   currentSearch: string;
+  currentOperatingCompany?: string;
   currentView?: string;
   viewLabel?: string;
+  canViewAll?: boolean;
 }
 
 /**
@@ -23,7 +31,7 @@ interface Props {
  *
  * URLサーチパラメータを更新することでサーバー側でフィルタリングを行う。
  */
-export function CaseFilterBar({ users, currentStatus, currentOwner, currentSearch, currentView, viewLabel }: Props) {
+export function CaseFilterBar({ users, operatingCompanies = [], currentStatus, currentOwner, currentSearch, currentOperatingCompany = "", currentView, viewLabel, canViewAll = false }: Props) {
   const router      = useRouter();
   const pathname    = usePathname();
   const searchParams = useSearchParams();
@@ -87,8 +95,7 @@ export function CaseFilterBar({ users, currentStatus, currentOwner, currentSearc
         ].join(" ")}
         aria-label="ステータスで絞り込む"
       >
-        <option value="">すべてのステータス</option>
-        {CASE_STATUS_OPTIONS.map((opt) => (
+        {CASE_STATUS_OPTIONS.filter((opt) => opt.value !== "case_received").map((opt) => (
           <option key={opt.value} value={opt.value}>
             {opt.label}
           </option>
@@ -115,8 +122,30 @@ export function CaseFilterBar({ users, currentStatus, currentOwner, currentSearc
         ))}
       </select>
 
+      {/* 運営会社フィルター（上位ロールのみ表示） */}
+      {canViewAll && operatingCompanies.length > 0 && (
+        <select
+          value={currentOperatingCompany}
+          onChange={(e) => updateParam("operatingCompany", e.target.value)}
+          className={[
+            "h-8 px-2 text-sm",
+            "border border-[var(--color-border)] rounded-[var(--radius-sm)]",
+            "bg-white text-[var(--color-text)]",
+            "focus:outline-none focus:border-[var(--color-accent)]",
+          ].join(" ")}
+          aria-label="運営会社で絞り込む"
+        >
+          <option value="">すべての運営会社</option>
+          {operatingCompanies.map((oc) => (
+            <option key={oc.id} value={oc.id}>
+              {oc.name}
+            </option>
+          ))}
+        </select>
+      )}
+
       {/* リセット */}
-      {(currentStatus || currentOwner || currentSearch || currentView) && (
+      {(currentStatus || currentOwner || currentSearch || currentView || currentOperatingCompany) && (
         <button
           type="button"
           onClick={() => router.push(pathname)}

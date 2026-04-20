@@ -7,3 +7,4 @@ export { BulkActionBar } from "./BulkActionBar";
 export { NotificationList } from "./notifications/NotificationList";
 export { CaseTabNav } from "./CaseTabNav";
 export type { CaseTabKey } from "./CaseTabNav";
+export { CasePageShell } from "./CasePageShell";

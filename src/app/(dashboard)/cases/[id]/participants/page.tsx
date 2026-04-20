@@ -1,12 +1,12 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCase } from "@/server/repositories/cases";
 import { listParticipants } from "@/server/repositories/participants";
 import { getCurrentUserProfile } from "@/lib/auth/session";
 import { can, PERMISSIONS } from "@/lib/rbac";
-import { ParticipantCsvImport, CaseTabNav } from "@/components/domain";
+import { ParticipantCsvImport, CasePageShell } from "@/components/domain";
 import { LEARNER_STATUS_LABELS, EMPLOYMENT_TYPE_LABELS } from "@/lib/constants/case-status";
 import { AddParticipantForm } from "./AddParticipantForm";
+import { IssueAccountSheetButton } from "./IssueAccountSheetButton";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -35,29 +35,20 @@ export default async function ParticipantsPage({
   const excluded = participants.filter((p) => p.learnerStatus === "excluded");
 
   return (
-    <div className="space-y-5">
-      {/* パンくず */}
-      <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
-        <Link href="/cases" className="hover:text-[var(--color-accent)]">案件管理</Link>
-        <span>/</span>
-        <Link href={`/cases/${id}`} className="hover:text-[var(--color-accent)]">
-          {caseData.caseCode}
-        </Link>
-        <span>/</span>
-        <span>受講者管理</span>
-      </div>
-
-      <h1 className="text-[22px] font-semibold text-[var(--color-text)]">
-        {caseData.caseName}
-        <span className="ml-2 text-base font-normal text-[var(--color-text-muted)]">
-          受講者管理 {active.length}名
-        </span>
-      </h1>
-
-      {/* タブナビ */}
-      <CaseTabNav caseId={id} activeTab="participants" />
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <CasePageShell
+      caseId={id}
+      caseCode={caseData.caseCode}
+      caseName={caseData.caseName}
+      caseStatus={caseData.status}
+      operatingCompanyName={caseData.operatingCompanyName}
+      organizationId={caseData.organizationId}
+      organizationName={caseData.organizationName}
+      activeTab="participants"
+      sectionTitle="受講者管理"
+      sectionDescription={`対象受講者 ${active.length}名 / アカウント発行シートの出力もここから行えます。`}
+      action={<IssueAccountSheetButton caseId={id} disabled={active.length === 0} />}
+    >
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* 受講者テーブル */}
         <div className="lg:col-span-2">
           <div className="border border-[var(--color-border)] rounded-[var(--radius-md)] overflow-hidden">
@@ -161,6 +152,6 @@ export default async function ParticipantsPage({
           </div>
         )}
       </div>
-    </div>
+    </CasePageShell>
   );
 }

@@ -15,9 +15,24 @@ interface SubsidyProgram {
   name: string;
 }
 
+interface VideoCourse {
+  id: string;
+  name: string;
+}
+
 interface User {
   id: string;
   displayName: string;
+}
+
+interface OperatingCompany {
+  id: string;
+  code: string;
+  name: string;
+}
+
+function asArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : [];
 }
 
 export default function NewCasePage({
@@ -26,35 +41,72 @@ export default function NewCasePage({
   searchParams: Promise<Record<string, string>>;
 }) {
   const [state, action, isPending] = useActionState(createCaseAction, null);
-  const [organizations, setOrgs] = useState<Organization[]>([]);
-  const [programs, setPrograms]  = useState<SubsidyProgram[]>([]);
-  const [users, setUsers]        = useState<User[]>([]);
-  const [preOrgId, setPreOrgId]  = useState("");
+  const [organizations, setOrgs]       = useState<Organization[]>([]);
+  const [programs, setPrograms]        = useState<SubsidyProgram[]>([]);
+  const [loadedCourses, setLoadedCourses] = useState<VideoCourse[]>([]);
+  const [loadedCourseProgramId, setLoadedCourseProgramId] = useState("");
+  const [users, setUsers]              = useState<User[]>([]);
+  const [operatingCompanies, setOpCos] = useState<OperatingCompany[]>([]);
+  const [preOrgId, setPreOrgId]        = useState("");
+  const [selectedProgramId, setSelectedProgramId] = useState("");
+  const [selectedCourseId, setSelectedCourseId]   = useState("");
+  const courses =
+    selectedProgramId !== "" && loadedCourseProgramId === selectedProgramId
+      ? loadedCourses
+      : [];
 
-  // URLパラメータからデフォルト企業IDを取得
   useEffect(() => {
     searchParams.then((sp) => {
       setPreOrgId(sp["organizationId"] ?? "");
     });
   }, [searchParams]);
 
-  // クライアントサイドでマスタデータを取得
   useEffect(() => {
     fetch("/api/master/organizations")
       .then((r) => r.json())
-      .then((d) => setOrgs(d ?? []))
+      .then((d) => setOrgs(asArray<Organization>(d)))
       .catch(() => {});
 
     fetch("/api/master/subsidy-programs")
       .then((r) => r.json())
-      .then((d) => setPrograms(d ?? []))
+      .then((d) => setPrograms(asArray<SubsidyProgram>(d)))
       .catch(() => {});
 
     fetch("/api/master/users")
       .then((r) => r.json())
-      .then((d) => setUsers(d ?? []))
+      .then((d) => setUsers(asArray<User>(d)))
+      .catch(() => {});
+
+    fetch("/api/master/operating-companies")
+      .then((r) => r.json())
+      .then((d) => setOpCos(asArray<OperatingCompany>(d)))
       .catch(() => {});
   }, []);
+
+  // 助成金種別変更時にコース一覧を再取得
+  useEffect(() => {
+    if (!selectedProgramId) return;
+
+    let cancelled = false;
+
+    fetch(`/api/master/video-courses?subsidyProgramId=${selectedProgramId}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return;
+        setLoadedCourses(asArray<VideoCourse>(d));
+        setLoadedCourseProgramId(selectedProgramId);
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedProgramId]);
+
+  const handleProgramChange = (programId: string) => {
+    setSelectedProgramId(programId);
+    setSelectedCourseId("");
+  };
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -67,6 +119,16 @@ export default function NewCasePage({
       )}
 
       <form action={action} className="space-y-5">
+        {/* 運営会社 */}
+        <Field label="運営会社" required>
+          <select name="operatingCompanyId" required {...selectClass()}>
+            <option value="">選択してください</option>
+            {operatingCompanies.map((oc) => (
+              <option key={oc.id} value={oc.id}>{oc.name}</option>
+            ))}
+          </select>
+        </Field>
+
         {/* 顧客企業 */}
         <Field label="顧客企業" required>
           <select
@@ -82,25 +144,44 @@ export default function NewCasePage({
           </select>
         </Field>
 
-        {/* 案件名 */}
-        <Field label="案件名" required>
-          <input
-            name="caseName"
-            type="text"
+        {/* 助成金種別（1段目） */}
+        <Field label="助成金種別" required>
+          <select
+            name="subsidyProgramId"
             required
-            placeholder="例: ○○社 人材開発支援助成金 2026年度"
-            {...inputClass()}
-          />
-        </Field>
-
-        {/* 助成金種別 */}
-        <Field label="助成金種別">
-          <select name="subsidyProgramId" {...selectClass()}>
+            value={selectedProgramId}
+            onChange={(e) => handleProgramChange(e.target.value)}
+            {...selectClass()}
+          >
             <option value="">選択してください</option>
             {programs.map((p) => (
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
+        </Field>
+
+        {/* コース（2段目・助成金種別連動） */}
+        <Field label="コース" required>
+          <select
+            name="videoCourseId"
+            required
+            value={selectedCourseId}
+            onChange={(e) => setSelectedCourseId(e.target.value)}
+            disabled={!selectedProgramId}
+            {...selectClass(selectedProgramId ? undefined : "bg-[var(--color-bg-secondary)] text-[var(--color-text-muted)]")}
+          >
+            <option value="">
+              {selectedProgramId ? "コースを選択してください" : "先に助成金種別を選択してください"}
+            </option>
+            {courses.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+          {selectedProgramId && courses.length === 0 && (
+            <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+              この助成金種別に紐付くコースが登録されていません。
+            </p>
+          )}
         </Field>
 
         {/* 担当者 */}
@@ -189,9 +270,9 @@ function inputClass() {
   };
 }
 
-function selectClass() {
+function selectClass(overrideClass?: string) {
   return {
-    className: [
+    className: overrideClass ?? [
       "w-full h-9 px-3 text-sm",
       "border border-[var(--color-border)] rounded-[var(--radius-sm)]",
       "bg-white text-[var(--color-text)]",

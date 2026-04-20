@@ -17,7 +17,9 @@ const PROJECT_REF = "wgakklsryzzfeviuccdv";
 const ACCESS_TOKEN = process.argv[2] || process.env.SUPABASE_ACCESS_TOKEN;
 
 if (!ACCESS_TOKEN) {
-  console.error("使用方法: node scripts/apply-all-migrations.mjs <access-token>");
+  console.error(
+    "使用方法: node scripts/apply-all-migrations.mjs <access-token>"
+  );
   console.error("トークン取得: https://app.supabase.com/account/tokens");
   process.exit(1);
 }
@@ -36,6 +38,21 @@ const MIGRATIONS = [
   "20260412000009_a2_document_access_control.sql",
   "20260412000009_add_upload_token_id_to_documents.sql",
   "20260412000010_c1_checklist_document_templates.sql",
+  "20260419000001_video_courses.sql",
+  "20260419000002_invoice_file.sql",
+  "20260419000003_completion_certificates.sql",
+  "20260419000004_guidance_files.sql",
+  "20260419000005_task_management.sql",
+  "20260419000006_document_types_paper_flow.sql",
+  "20260419000006_operating_companies.sql",
+  "20260419000007_video_courses_extend.sql",
+  "20260419000007_rls_operating_company.sql",
+  "20260419000008_cases_video_course_id.sql",
+  "20260419000009_specialist_portal.sql",
+  "20260419000010_specialist_submission.sql",
+  "20260419000011_specialist_update_rls.sql",
+  "20260420000012_cases_select_company_scope.sql",
+  "20260420000013_subsidy_programs_admin_write.sql",
 ];
 
 async function runQuery(sql) {
@@ -71,7 +88,9 @@ let failCount = 0;
 
 for (const filename of MIGRATIONS) {
   const filepath = resolve(__dirname, "../supabase/migrations", filename);
-  process.stdout.write(`[${successCount + failCount + 1}/${MIGRATIONS.length}] ${filename} ... `);
+  process.stdout.write(
+    `[${successCount + failCount + 1}/${MIGRATIONS.length}] ${filename} ... `
+  );
 
   let sql;
   try {
@@ -92,14 +111,18 @@ for (const filename of MIGRATIONS) {
     failCount++;
 
     // エラーが出ても続行するか確認
-    console.error("   ⚠️  このファイルでエラーが発生しました。以降のマイグレーションは依存関係があるため中断します。");
+    console.error(
+      "   ⚠️  このファイルでエラーが発生しました。以降のマイグレーションは依存関係があるため中断します。"
+    );
     console.error("   エラー内容を確認して修正してから再実行してください。\n");
     break;
   }
 }
 
 console.log("\n==============================================");
-console.log(`結果: 成功 ${successCount} / 失敗 ${failCount} / 合計 ${MIGRATIONS.length}`);
+console.log(
+  `結果: 成功 ${successCount} / 失敗 ${failCount} / 合計 ${MIGRATIONS.length}`
+);
 console.log("==============================================");
 
 if (failCount > 0) {

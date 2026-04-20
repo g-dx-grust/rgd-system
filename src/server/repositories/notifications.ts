@@ -6,6 +6,7 @@
  */
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export type NotificationCategory = "info" | "warning" | "error" | "task";
 
@@ -131,6 +132,80 @@ export async function getUnreadCount(userId: string): Promise<number> {
     .eq("user_id", userId)
     .eq("is_read", false);
   return count ?? 0;
+}
+
+// -----------------------------------------------------------
+// システム通知（admin client 使用 — RLS バイパス）
+// 社労士 → 内部スタッフへの通知などに使う
+// -----------------------------------------------------------
+
+export interface NotifyInternalStaffInput {
+  caseId: string;
+  title: string;
+  body?: string;
+  linkUrl?: string;
+  category?: NotificationCategory;
+  /** 通知対象ロールコード。デフォルトは ops 系 3 種 */
+  targetRoleCodes?: string[];
+}
+
+/**
+ * 案件に紐付く内部スタッフへシステム通知を送る。
+ * createAdminClient を使うため RLS に依らない。
+ */
+export async function notifyInternalStaff(
+  input: NotifyInternalStaffInput
+): Promise<void> {
+  try {
+    const admin = createAdminClient();
+    const targetRoles = input.targetRoleCodes ?? [
+      "admin",
+      "operations_manager",
+      "operations_staff",
+    ];
+
+    // 案件の operating_company_id を取得
+    const { data: caseRow } = await admin
+      .from("cases")
+      .select("operating_company_id")
+      .eq("id", input.caseId)
+      .single();
+
+    if (!caseRow) return;
+
+    // 対象ロールに属し、同じ運営会社 (または operating_company_id が NULL の admin) のユーザーを取得
+    const { data: users } = await admin
+      .from("user_profiles")
+      .select("id, operating_company_id, roles!inner(code)")
+      .is("deleted_at", null)
+      .eq("is_active", true)
+      .in("roles.code", targetRoles);
+
+    if (!users || users.length === 0) return;
+
+    const rows = users
+      .filter((u) => {
+        const oc = (u as unknown as Record<string, unknown>).operating_company_id;
+        return oc === null || oc === caseRow.operating_company_id;
+      })
+      .map((u) => ({
+        user_id:  u.id,
+        title:    input.title,
+        body:     input.body ?? "",
+        link_url: input.linkUrl ?? null,
+        category: input.category ?? "task",
+        case_id:  input.caseId,
+      }));
+
+    if (rows.length === 0) return;
+
+    const { error } = await admin.from("notifications").insert(rows);
+    if (error) {
+      console.error("[notifyInternalStaff] insert failed:", error.message);
+    }
+  } catch (err) {
+    console.error("[notifyInternalStaff] unexpected error:", err);
+  }
 }
 
 // -----------------------------------------------------------

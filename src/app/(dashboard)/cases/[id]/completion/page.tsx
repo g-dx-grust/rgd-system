@@ -11,7 +11,6 @@
  * - final_application_shared → completed 遷移制御
  */
 
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUserProfile } from "@/lib/auth/session";
 import { can, PERMISSIONS } from "@/lib/rbac";
@@ -20,9 +19,8 @@ import { listSurveys } from "@/server/repositories/surveys";
 import { listFinalReviewItems, listFinalSpecialistLinkages } from "@/server/repositories/final-review";
 import { checkFinalReadiness } from "@/server/services/final-application";
 import { listApplicationPackages } from "@/server/repositories/application-packages";
-import { CASE_STATUS_LABELS } from "@/lib/constants/case-status";
 import { CompletionTabClient } from "./CompletionTabClient";
-import { CaseTabNav } from "@/components/domain";
+import { CasePageShell } from "@/components/domain";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -58,41 +56,18 @@ export default async function CompletionPage({
   const finalPackages = allPackages.filter((p) => p.packageType === "final");
 
   return (
-    <div className="space-y-5">
-      {/* パンくず */}
-      <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
-        <Link href="/cases" className="hover:text-[var(--color-accent)]">案件管理</Link>
-        <span>/</span>
-        <Link href={`/cases/${id}`} className="hover:text-[var(--color-accent)]">
-          {caseData.caseCode}
-        </Link>
-        <span>/</span>
-        <span>終了申請</span>
-      </div>
-
-      {/* ヘッダー */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="space-y-1">
-          <h1 className="text-[22px] font-semibold text-[var(--color-text)]">
-            {caseData.caseName}
-          </h1>
-          <p className="text-sm text-[var(--color-text-muted)]">
-            {caseData.caseCode}　/
-            <Link
-              href={`/organizations/${caseData.organizationId}`}
-              className="text-[var(--color-accent)] hover:underline"
-            >
-              {caseData.organizationName}
-            </Link>
-            　/　{CASE_STATUS_LABELS[caseData.status as keyof typeof CASE_STATUS_LABELS] ?? caseData.status}
-          </p>
-        </div>
-      </div>
-
-      {/* タブナビ */}
-      <CaseTabNav caseId={id} activeTab="completion" />
-
-      {/* コンテンツ */}
+    <CasePageShell
+      caseId={id}
+      caseCode={caseData.caseCode}
+      caseName={caseData.caseName}
+      caseStatus={caseData.status}
+      operatingCompanyName={caseData.operatingCompanyName}
+      organizationId={caseData.organizationId}
+      organizationName={caseData.organizationName}
+      activeTab="completion"
+      sectionTitle="終了申請"
+      sectionDescription="終了申請の準備状況と最終提出物を確認します。"
+    >
       <CompletionTabClient
         caseId={id}
         caseStatus={caseData.status}
@@ -104,6 +79,6 @@ export default async function CompletionPage({
         canEdit={canEdit}
         canStatusChange={canStatusChange}
       />
-    </div>
+    </CasePageShell>
   );
 }

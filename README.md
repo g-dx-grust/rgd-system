@@ -1,36 +1,108 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# RGDシステム
 
-## Getting Started
+助成金を用いた企業研修案件の受領から完了までの事務運用を一元管理するシステムです。
 
-First, run the development server:
+---
+
+## 開発環境のセットアップ
+
+### 必要なもの
+
+| ツール | バージョン | インストール先 |
+|---|---|---|
+| **Node.js** | v20 以上 | https://nodejs.org/ja （LTS 推奨） |
+| **npm** | v10 以上（Node に同梱） | — |
+| **Git** | 最新版 | https://git-scm.com |
+
+> **Windows の場合**: Node.js の公式インストーラー（`.msi`）を使うのが最も簡単です。
+
+---
+
+### 手順
+
+#### 1. リポジトリをクローン
+
+```bash
+git clone https://github.com/<org>/rgd-system.git
+cd rgd-system
+```
+
+#### 2. パッケージをインストール
+
+```bash
+npm install
+```
+
+#### 3. 環境変数を設定
+
+```bash
+cp .env.example .env.local
+```
+
+`.env.local` を開き、以下の値を設定してください。  
+値は管理者（グラスト社内）に確認してください。
+
+```
+NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+SUPABASE_SERVICE_ROLE_KEY=eyJ...
+```
+
+#### 4. 開発サーバーを起動
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+ブラウザで [http://localhost:3000](http://localhost:3000) を開くと動作確認できます。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## よく使うコマンド
 
-## Learn More
+```bash
+npm run dev        # 開発サーバー起動（ホットリロード付き）
+npm run typecheck  # TypeScript 型チェック
+npm run lint       # ESLint チェック
+npm run lint:fix   # ESLint 自動修正
+npm test           # ユニットテスト実行
+```
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## ディレクトリ構成（抜粋）
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```
+src/
+├── app/                  # Next.js App Router（ページ）
+│   ├── (auth)/           # ログイン画面
+│   ├── (dashboard)/      # 業務画面（案件・企業・書類 etc.）
+│   └── api/              # Route Handlers
+├── components/           # UIコンポーネント
+├── server/
+│   ├── repositories/     # DBアクセス
+│   ├── services/         # 業務ロジック
+│   └── usecases/         # Server Actions
+├── lib/                  # ユーティリティ・定数
+└── types/                # 型定義
+supabase/
+├── migrations/           # DBマイグレーション
+└── seed/                 # 初期データ
+```
 
-## Deploy on Vercel
+---
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 技術スタック
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **フレームワーク**: Next.js (App Router) + TypeScript
+- **UI**: Tailwind CSS
+- **認証・DB・Storage**: Supabase
+- **デプロイ**: Vercel
+
+---
+
+## 注意事項
+
+- `.env.local` はコミットしないでください（`.gitignore` 対象）
+- `main` ブランチへの直接プッシュは避け、PR 経由でマージしてください
+- 詳細な実装ルールは [`CLAUDE.md`](../CLAUDE.md) を参照してください

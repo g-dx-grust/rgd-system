@@ -3,7 +3,6 @@
 import { useActionState } from "react";
 import { Button } from "@/components/ui";
 import { createParticipantAction } from "@/server/usecases/participants/actions";
-import { EMPLOYMENT_TYPE_LABELS } from "@/lib/constants/case-status";
 
 interface Props {
   caseId: string;
@@ -29,25 +28,11 @@ export function AddParticipantForm({ caseId }: Props) {
       <Field label="氏名（カナ）">
         <input name="nameKana" type="text" placeholder="ヤマダ タロウ" {...inputClass()} />
       </Field>
-      <Field label="社員番号">
-        <input name="employeeCode" type="text" placeholder="EMP001" {...inputClass()} />
+      <Field label="ログインID">
+        <input name="employeeCode" type="text" placeholder="例: user001" {...inputClass()} />
       </Field>
-      <Field label="メール">
-        <input name="email" type="email" placeholder="example@company.co.jp" {...inputClass()} />
-      </Field>
-      <Field label="部署">
-        <input name="department" type="text" placeholder="営業部" {...inputClass()} />
-      </Field>
-      <Field label="雇用形態">
-        <select name="employmentType" {...inputClass()}>
-          <option value="">選択してください</option>
-          {Object.entries(EMPLOYMENT_TYPE_LABELS).map(([v, l]) => (
-            <option key={v} value={v}>{l}</option>
-          ))}
-        </select>
-      </Field>
-      <Field label="入社日">
-        <input name="joinedAt" type="date" {...inputClass()} />
+      <Field label="ログインPW">
+        <input name="email" type="text" placeholder="" {...inputClass()} />
       </Field>
 
       <Button type="submit" variant="primary" size="sm" loading={isPending}>

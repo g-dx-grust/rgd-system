@@ -8,7 +8,6 @@
  * - 初回申請可否チェック結果を表示
  */
 
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCase } from "@/server/repositories/cases";
 import { listApplicationPackages } from "@/server/repositories/application-packages";
@@ -19,7 +18,7 @@ import { PreApplicationReadinessCheck } from "@/components/domain/applications/P
 import { ApplicationsTabClient } from "./ApplicationsTabClient";
 import type { SelectableDocument } from "@/components/domain/applications/PackageFileSelector";
 import { createClient } from "@/lib/supabase/server";
-import { CaseTabNav } from "@/components/domain";
+import { CasePageShell } from "@/components/domain";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -51,23 +50,20 @@ export default async function ApplicationsPage({
   ]);
 
   return (
-    <div className="space-y-5">
-      {/* パンくず */}
-      <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
-        <Link href="/cases" className="hover:text-[var(--color-accent)]">案件管理</Link>
-        <span>/</span>
-        <Link href={`/cases/${id}`} className="hover:text-[var(--color-accent)]">{caseData.caseCode}</Link>
-        <span>/</span>
-        <span>申請</span>
-      </div>
-
-      {/* タブナビ */}
-      <CaseTabNav caseId={id} activeTab="applications" />
-
-      {/* 充足チェック */}
+    <CasePageShell
+      caseId={id}
+      caseCode={caseData.caseCode}
+      caseName={caseData.caseName}
+      caseStatus={caseData.status}
+      operatingCompanyName={caseData.operatingCompanyName}
+      organizationId={caseData.organizationId}
+      organizationName={caseData.organizationName}
+      activeTab="applications"
+      sectionTitle="申請"
+      sectionDescription="初回申請パッケージの作成と提出準備を行います。"
+    >
       <PreApplicationReadinessCheck result={readiness} />
 
-      {/* クライアントコンポーネント（パッケージ操作） */}
       <ApplicationsTabClient
         caseId={id}
         caseCode={caseData.caseCode}
@@ -78,7 +74,7 @@ export default async function ApplicationsPage({
         documents={approvedDocs}
         packages={packages}
       />
-    </div>
+    </CasePageShell>
   );
 }
 

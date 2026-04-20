@@ -7,13 +7,100 @@
 import { revalidatePath } from "next/cache";
 import { getCurrentUserProfile } from "@/lib/auth/session";
 import { requirePermission, PERMISSIONS } from "@/lib/rbac";
-import { createInvoice, updateInvoice, deleteInvoice } from "@/server/repositories/invoices";
+import {
+  createInvoice,
+  updateInvoice,
+  deleteInvoice,
+} from "@/server/repositories/invoices";
 import type { InvoiceStatus } from "@/server/repositories/invoices";
 import { writeAuditLog } from "@/server/repositories/audit-log";
+import { createClient } from "@/lib/supabase/server";
+import {
+  getOptionalFeatureUnavailableMessage,
+  isMissingStorageBucketError,
+} from "@/lib/supabase/errors";
 
 export interface ActionResult {
   error?: string;
   success?: boolean;
+}
+
+// ---------------------------------------------------------------
+// 請求書ファイルアップロード
+// ---------------------------------------------------------------
+export async function uploadInvoiceFileAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  const user = await getCurrentUserProfile();
+  if (!user) return { error: "認証が必要です。" };
+
+  requirePermission(user.roleCode, PERMISSIONS.BILLING_REGISTER);
+
+  const caseId = String(formData.get("caseId") ?? "").trim();
+  if (!caseId) return { error: "案件IDが不正です。" };
+
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0)
+    return { error: "ファイルを選択してください。" };
+
+  const allowed = ["application/pdf", "image/jpeg", "image/png"];
+  if (!allowed.includes(file.type))
+    return { error: "PDF・JPEG・PNGのみアップロードできます。" };
+
+  const safeFileName = file.name.replace(/[/\\]/g, "_");
+  const filePath = `${caseId}/${Date.now()}_${safeFileName}`;
+  let uploaded = false;
+
+  try {
+    const supabase = await createClient();
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const { error: storageError } = await supabase.storage
+      .from("invoice-files")
+      .upload(filePath, buffer, { contentType: file.type });
+    if (storageError) {
+      if (isMissingStorageBucketError(storageError, ["invoice-files"])) {
+        return {
+          error: getOptionalFeatureUnavailableMessage("請求書ファイル"),
+        };
+      }
+      throw new Error(storageError.message);
+    }
+    uploaded = true;
+
+    const invoiceNumber = `INV-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+    const invoice = await createInvoice({
+      caseId,
+      invoiceNumber,
+      filePath,
+      fileName: file.name,
+      createdBy: user.id,
+    });
+
+    await writeAuditLog({
+      userId: user.id,
+      action: "document_upload",
+      targetType: "invoices",
+      targetId: invoice.id,
+      metadata: { caseId, fileName: file.name, action: "file_uploaded" },
+    });
+  } catch (err) {
+    if (uploaded) {
+      try {
+        const supabase = await createClient();
+        await supabase.storage.from("invoice-files").remove([filePath]);
+      } catch {}
+    }
+    return {
+      error:
+        err instanceof Error
+          ? err.message
+          : "請求書のアップロードに失敗しました。",
+    };
+  }
+
+  revalidatePath(`/cases/${caseId}/billing`);
+  return { success: true };
 }
 
 // ---------------------------------------------------------------
@@ -28,30 +115,42 @@ export async function createInvoiceAction(
 
   requirePermission(user.roleCode, PERMISSIONS.BILLING_REGISTER);
 
-  const caseId        = String(formData.get("caseId") ?? "").trim();
+  const caseId = String(formData.get("caseId") ?? "").trim();
   const invoiceNumber = String(formData.get("invoiceNumber") ?? "").trim();
-  const invoiceDate   = String(formData.get("invoiceDate") ?? "").trim() || undefined;
-  const dueDate       = String(formData.get("dueDate") ?? "").trim() || undefined;
-  const amountStr     = String(formData.get("amount") ?? "").trim();
-  const amount        = amountStr ? Number(amountStr) : undefined;
-  const note          = String(formData.get("note") ?? "").trim() || undefined;
+  const invoiceDate =
+    String(formData.get("invoiceDate") ?? "").trim() || undefined;
+  const dueDate = String(formData.get("dueDate") ?? "").trim() || undefined;
+  const amountStr = String(formData.get("amount") ?? "").trim();
+  const amount = amountStr ? Number(amountStr) : undefined;
+  const note = String(formData.get("note") ?? "").trim() || undefined;
 
-  if (!caseId)        return { error: "案件IDが不正です。" };
+  if (!caseId) return { error: "案件IDが不正です。" };
   if (!invoiceNumber) return { error: "請求番号を入力してください。" };
-  if (amount !== undefined && isNaN(amount)) return { error: "金額の形式が正しくありません。" };
+  if (amount !== undefined && isNaN(amount))
+    return { error: "金額の形式が正しくありません。" };
 
   try {
-    const invoice = await createInvoice({ caseId, invoiceNumber, invoiceDate, dueDate, amount, note, createdBy: user.id });
+    const invoice = await createInvoice({
+      caseId,
+      invoiceNumber,
+      invoiceDate,
+      dueDate,
+      amount,
+      note,
+      createdBy: user.id,
+    });
 
     await writeAuditLog({
-      userId:     user.id,
-      action:     "billing_status_change",
+      userId: user.id,
+      action: "billing_status_change",
       targetType: "invoices",
-      targetId:   invoice.id,
-      metadata:   { invoiceNumber, caseId, action: "created" },
+      targetId: invoice.id,
+      metadata: { invoiceNumber, caseId, action: "created" },
     });
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "請求の作成に失敗しました。" };
+    return {
+      error: err instanceof Error ? err.message : "請求の作成に失敗しました。",
+    };
   }
 
   revalidatePath(`/cases/${caseId}/billing`);
@@ -70,14 +169,24 @@ export async function updateInvoiceStatusAction(
 
   requirePermission(user.roleCode, PERMISSIONS.BILLING_REGISTER);
 
-  const caseId        = String(formData.get("caseId") ?? "").trim();
-  const invoiceId     = String(formData.get("invoiceId") ?? "").trim();
-  const billingStatus = String(formData.get("billingStatus") ?? "").trim() as InvoiceStatus;
+  const caseId = String(formData.get("caseId") ?? "").trim();
+  const invoiceId = String(formData.get("invoiceId") ?? "").trim();
+  const billingStatus = String(
+    formData.get("billingStatus") ?? ""
+  ).trim() as InvoiceStatus;
 
-  if (!caseId || !invoiceId || !billingStatus) return { error: "パラメータが不正です。" };
+  if (!caseId || !invoiceId || !billingStatus)
+    return { error: "パラメータが不正です。" };
 
-  const validStatuses: InvoiceStatus[] = ['draft', 'sent', 'paid', 'overdue', 'cancelled'];
-  if (!validStatuses.includes(billingStatus)) return { error: "不正なステータスです。" };
+  const validStatuses: InvoiceStatus[] = [
+    "draft",
+    "sent",
+    "paid",
+    "overdue",
+    "cancelled",
+  ];
+  if (!validStatuses.includes(billingStatus))
+    return { error: "不正なステータスです。" };
 
   const updates: Parameters<typeof updateInvoice>[1] = { billingStatus };
 
@@ -94,14 +203,19 @@ export async function updateInvoiceStatusAction(
     await updateInvoice(invoiceId, updates);
 
     await writeAuditLog({
-      userId:     user.id,
-      action:     "billing_status_change",
+      userId: user.id,
+      action: "billing_status_change",
       targetType: "invoices",
-      targetId:   invoiceId,
-      metadata:   { billingStatus, caseId },
+      targetId: invoiceId,
+      metadata: { billingStatus, caseId },
     });
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "請求ステータスの変更に失敗しました。" };
+    return {
+      error:
+        err instanceof Error
+          ? err.message
+          : "請求ステータスの変更に失敗しました。",
+    };
   }
 
   revalidatePath(`/cases/${caseId}/billing`);
@@ -120,7 +234,7 @@ export async function deleteInvoiceAction(
 
   requirePermission(user.roleCode, PERMISSIONS.BILLING_REGISTER);
 
-  const caseId    = String(formData.get("caseId") ?? "").trim();
+  const caseId = String(formData.get("caseId") ?? "").trim();
   const invoiceId = String(formData.get("invoiceId") ?? "").trim();
 
   if (!caseId || !invoiceId) return { error: "パラメータが不正です。" };
@@ -129,14 +243,16 @@ export async function deleteInvoiceAction(
     await deleteInvoice(invoiceId);
 
     await writeAuditLog({
-      userId:     user.id,
-      action:     "billing_status_change",
+      userId: user.id,
+      action: "billing_status_change",
       targetType: "invoices",
-      targetId:   invoiceId,
-      metadata:   { caseId, action: "deleted" },
+      targetId: invoiceId,
+      metadata: { caseId, action: "deleted" },
     });
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "請求の削除に失敗しました。" };
+    return {
+      error: err instanceof Error ? err.message : "請求の削除に失敗しました。",
+    };
   }
 
   revalidatePath(`/cases/${caseId}/billing`);

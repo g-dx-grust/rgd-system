@@ -26,11 +26,13 @@ export function DashboardLayout({
       <Header
         onToggleSidebar={handleToggleSidebar}
         isSidebarOpen={isSidebarOpen}
-        userDisplayName={userDisplayName}
-        userRoleLabel={userRoleLabel}
       />
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar isOpen={isSidebarOpen} />
+        <Sidebar
+          isOpen={isSidebarOpen}
+          userDisplayName={userDisplayName}
+          userRoleLabel={userRoleLabel}
+        />
         <main className="flex-1 overflow-y-auto bg-[var(--color-bg-secondary)]">
           <div className="p-6 max-w-screen-xl">{children}</div>
         </main>

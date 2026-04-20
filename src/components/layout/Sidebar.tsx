@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { logoutAction } from "@/server/usecases/auth/actions";
 
 /** サイドバーナビゲーションアイテム */
 interface NavItem {
@@ -12,6 +13,8 @@ interface NavItem {
 
 interface SidebarProps {
   isOpen: boolean;
+  userDisplayName?: string;
+  userRoleLabel?: string;
 }
 
 /** 展開時: 200px / 折りたたみ時: 56px */
@@ -33,11 +36,6 @@ const NAV_ITEMS: NavItem[] = [
     label: "企業管理",
     href: "/organizations",
     icon: <OrgIcon />,
-  },
-  {
-    label: "受講者管理",
-    href: "/participants",
-    icon: <ParticipantsIcon />,
   },
   {
     label: "書類管理",
@@ -71,8 +69,9 @@ const NAV_ITEMS: NavItem[] = [
   },
 ];
 
-export function Sidebar({ isOpen }: SidebarProps) {
+export function Sidebar({ isOpen, userDisplayName, userRoleLabel }: SidebarProps) {
   const pathname = usePathname();
+  const initials = userDisplayName ? userDisplayName.slice(0, 1) : "U";
 
   return (
     <aside
@@ -89,6 +88,32 @@ export function Sidebar({ isOpen }: SidebarProps) {
       }}
       aria-label="メインナビゲーション"
     >
+      {/* サービス名 */}
+      <div
+        className={[
+          "h-14 flex-shrink-0 flex items-center border-b border-[var(--color-border)]",
+          isOpen ? "px-4" : "justify-center",
+        ].join(" ")}
+      >
+        {isOpen ? (
+          <span
+            className="text-[22px] font-semibold text-[var(--color-text)] leading-none select-none whitespace-nowrap"
+            style={{ fontFamily: "var(--font-base)" }}
+          >
+            RGDシステム
+          </span>
+        ) : (
+          <span
+            className="text-sm font-bold text-[var(--color-text)] select-none"
+            style={{ fontFamily: "var(--font-base)" }}
+            title="RGDシステム"
+          >
+            R
+          </span>
+        )}
+      </div>
+
+      {/* ナビゲーション */}
       <nav className="flex flex-col gap-0.5 p-2 flex-1">
         {NAV_ITEMS.map((item) => {
           const isActive =
@@ -119,6 +144,88 @@ export function Sidebar({ isOpen }: SidebarProps) {
           );
         })}
       </nav>
+
+      {/* ユーザー情報 + ログアウト */}
+      <div className="flex-shrink-0 border-t border-[var(--color-border)] p-2 flex flex-col gap-1">
+        {isOpen ? (
+          <div className="flex items-center gap-2 px-2 py-1.5">
+            <div
+              className={[
+                "w-7 h-7 flex-shrink-0 flex items-center justify-center",
+                "rounded-[var(--radius-sm)]",
+                "bg-[var(--color-accent-tint)]",
+                "border border-[var(--color-border)]",
+                "text-xs font-medium text-[var(--color-accent)]",
+                "select-none",
+              ].join(" ")}
+            >
+              {initials}
+            </div>
+            <div className="flex-1 min-w-0">
+              {userDisplayName && (
+                <div className="text-sm font-medium text-[var(--color-text)] truncate leading-none">
+                  {userDisplayName}
+                </div>
+              )}
+              {userRoleLabel && (
+                <div className="text-xs text-[var(--color-text-muted)] truncate leading-none mt-0.5">
+                  {userRoleLabel}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="flex justify-center py-1">
+            <div
+              className={[
+                "w-7 h-7 flex items-center justify-center",
+                "rounded-[var(--radius-sm)]",
+                "bg-[var(--color-accent-tint)]",
+                "border border-[var(--color-border)]",
+                "text-xs font-medium text-[var(--color-accent)]",
+                "select-none",
+              ].join(" ")}
+              title={userDisplayName}
+            >
+              {initials}
+            </div>
+          </div>
+        )}
+        <form action={logoutAction}>
+          {isOpen ? (
+            <button
+              type="submit"
+              className={[
+                "w-full h-8 px-3 text-xs font-medium",
+                "rounded-[var(--radius-sm)]",
+                "border border-[var(--color-border)]",
+                "text-[var(--color-text-muted)]",
+                "hover:bg-[var(--color-bg-secondary)] hover:text-[var(--color-text)]",
+                "transition-colors duration-150",
+                "cursor-pointer",
+              ].join(" ")}
+            >
+              ログアウト
+            </button>
+          ) : (
+            <button
+              type="submit"
+              aria-label="ログアウト"
+              title="ログアウト"
+              className={[
+                "w-full h-8 flex items-center justify-center",
+                "rounded-[var(--radius-sm)]",
+                "text-[var(--color-text-muted)]",
+                "hover:bg-[var(--color-bg-secondary)] hover:text-[var(--color-text)]",
+                "transition-colors duration-150",
+                "cursor-pointer",
+              ].join(" ")}
+            >
+              <LogoutIcon />
+            </button>
+          )}
+        </form>
+      </div>
     </aside>
   );
 }
@@ -173,16 +280,6 @@ function AuditLogIcon() {
   );
 }
 
-function ParticipantsIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <circle cx="6" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M1.5 13.5c0-2.485 2.015-4.5 4.5-4.5s4.5 2.015 4.5 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      <path d="M11 7.5a2 2 0 1 0 0-4M14.5 13.5c0-2.071-1.567-3.775-3.5-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  );
-}
-
 function DocumentsIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -218,6 +315,16 @@ function SettingsIcon() {
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
       <circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.5" />
       <path d="M8 1.5v1M8 13.5v1M1.5 8h1M13.5 8h1M3.4 3.4l.7.7M11.9 11.9l.7.7M3.4 12.6l.7-.7M11.9 4.1l.7-.7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function LogoutIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M6 2H3a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <path d="M10.5 11l3-3-3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M13.5 8H6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   );
 }

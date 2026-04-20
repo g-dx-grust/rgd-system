@@ -51,6 +51,9 @@ export const PERMISSIONS = {
   // 請求
   BILLING_REGISTER: "billing:register",
 
+  // タスク
+  TASK_MANAGE: "task:manage",
+
   // LMS進捗
   LMS_PROGRESS_VIEW: "lms_progress:view",
   LMS_PROGRESS_SYNC: "lms_progress:sync",
@@ -86,6 +89,7 @@ const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     PERMISSIONS.DOCUMENT_TYPE_CHANGE,
     PERMISSIONS.SPECIALIST_PACKAGE_CREATE,
     PERMISSIONS.BILLING_REGISTER,
+    PERMISSIONS.TASK_MANAGE,
     PERMISSIONS.LMS_PROGRESS_VIEW,
     PERMISSIONS.LMS_PROGRESS_SYNC,
     PERMISSIONS.SETTINGS_EDIT, // 一部
@@ -102,6 +106,7 @@ const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     PERMISSIONS.DOCUMENT_UPLOAD,
     PERMISSIONS.DOCUMENT_TYPE_CHANGE,
     PERMISSIONS.SPECIALIST_PACKAGE_CREATE,
+    PERMISSIONS.TASK_MANAGE,
     PERMISSIONS.LMS_PROGRESS_VIEW,
     PERMISSIONS.LMS_PROGRESS_SYNC,
   ],
@@ -111,6 +116,7 @@ const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     PERMISSIONS.CASE_VIEW_OWN, // 自担当案件
     PERMISSIONS.CLIENT_EDIT,
     PERMISSIONS.DOCUMENT_UPLOAD,
+    PERMISSIONS.TASK_MANAGE,
     PERMISSIONS.LMS_PROGRESS_VIEW,
   ],
 
@@ -118,6 +124,7 @@ const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     PERMISSIONS.CASE_VIEW_OWN, // 限定参照
     PERMISSIONS.DOCUMENT_UPLOAD, // 証憑のみ
     PERMISSIONS.BILLING_REGISTER,
+    PERMISSIONS.TASK_MANAGE,
     PERMISSIONS.LMS_PROGRESS_VIEW,
   ],
 
@@ -139,7 +146,10 @@ const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
 /**
  * 指定ロールが指定権限を持つか判定する
  */
-export function roleHasPermission(role: RoleCode, permission: Permission): boolean {
+export function roleHasPermission(
+  role: RoleCode,
+  permission: Permission
+): boolean {
   return ROLE_PERMISSIONS[role]?.includes(permission) ?? false;
 }
 

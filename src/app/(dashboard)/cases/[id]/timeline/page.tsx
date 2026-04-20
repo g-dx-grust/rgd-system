@@ -1,8 +1,7 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCase } from "@/server/repositories/cases";
 import { listAuditLogs } from "@/server/repositories/audit-log";
-import { CaseStatusBadge, CaseTabNav } from "@/components/domain";
+import { CasePageShell } from "@/components/domain";
 import { CASE_STATUS_LABELS } from "@/lib/constants/case-status";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
@@ -43,27 +42,19 @@ export default async function CaseTimelinePage({
   if (!caseData) notFound();
 
   return (
-    <div className="space-y-5">
-      {/* パンくず */}
-      <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
-        <Link href="/cases" className="hover:text-[var(--color-accent)]">案件管理</Link>
-        <span>/</span>
-        <Link href={`/cases/${id}`} className="hover:text-[var(--color-accent)]">{caseData.caseCode}</Link>
-        <span>/</span>
-        <span>変更履歴</span>
-      </div>
-
-      {/* ヘッダー */}
-      <div className="flex items-center gap-3">
-        <h1 className="text-[22px] font-semibold text-[var(--color-text)]">{caseData.caseName}</h1>
-        <CaseStatusBadge status={caseData.status} />
-      </div>
-
-      {/* タブナビ */}
-      <CaseTabNav caseId={id} activeTab="timeline" />
-
-      {/* タイムライン */}
-      <div className="border border-[var(--color-border)] rounded-[var(--radius-md)] overflow-hidden">
+    <CasePageShell
+      caseId={id}
+      caseCode={caseData.caseCode}
+      caseName={caseData.caseName}
+      caseStatus={caseData.status}
+      operatingCompanyName={caseData.operatingCompanyName}
+      organizationId={caseData.organizationId}
+      organizationName={caseData.organizationName}
+      activeTab="timeline"
+      sectionTitle="変更履歴"
+      sectionDescription="案件に対する主要操作の監査履歴です。"
+    >
+      <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)]">
         {logs.length === 0 ? (
           <div className="py-16 text-center text-sm text-[var(--color-text-muted)]">
             変更履歴がありません。
@@ -107,7 +98,7 @@ export default async function CaseTimelinePage({
           </ul>
         )}
       </div>
-    </div>
+    </CasePageShell>
   );
 }
 

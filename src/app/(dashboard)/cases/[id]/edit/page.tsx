@@ -33,6 +33,7 @@ export default async function CaseEditPage({
         organizationId:         caseData.organizationId,
         organizationName:       caseData.organizationName,
         subsidyProgramId:       caseData.subsidyProgramId,
+        videoCourseId:          caseData.videoCourseId,
         contractDate:           caseData.contractDate,
         plannedStartDate:       caseData.plannedStartDate,
         plannedEndDate:         caseData.plannedEndDate,
