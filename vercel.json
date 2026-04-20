@@ -22,10 +22,6 @@
     }
   ],
 
-  "env": {
-    "TZ": "Asia/Tokyo"
-  },
-
   "crons": [
     {
       "path": "/api/cron/deadline-check",
