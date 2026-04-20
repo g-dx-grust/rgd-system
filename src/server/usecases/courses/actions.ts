@@ -14,8 +14,10 @@ import {
   updateVideoCourse,
   deactivateVideoCourse,
   activateVideoCourse,
+  isVideoCoursesFeatureAvailable,
 } from "@/server/repositories/video-courses";
 import { writeAuditLog } from "@/server/repositories/audit-log";
+import { getOptionalFeatureUnavailableMessage } from "@/lib/supabase/errors";
 
 export interface CourseActionResult {
   error?: string;
@@ -66,6 +68,10 @@ export async function createCourseAction(
   if (!currentUser) return { error: "認証が必要です。" };
 
   requirePermission(currentUser.roleCode, PERMISSIONS.USER_MANAGE);
+
+  if (!(await isVideoCoursesFeatureAvailable())) {
+    return { error: getOptionalFeatureUnavailableMessage("コースマスタ") };
+  }
 
   const name = formData.get("name");
   const subsidyProgramId = formData.get("subsidyProgramId");
@@ -147,6 +153,10 @@ export async function updateCourseAction(
   if (!currentUser) return { error: "認証が必要です。" };
 
   requirePermission(currentUser.roleCode, PERMISSIONS.USER_MANAGE);
+
+  if (!(await isVideoCoursesFeatureAvailable())) {
+    return { error: getOptionalFeatureUnavailableMessage("コースマスタ") };
+  }
 
   const id = formData.get("id");
   const name = formData.get("name");
@@ -233,6 +243,10 @@ export async function deactivateCourseAction(
 
   requirePermission(currentUser.roleCode, PERMISSIONS.USER_MANAGE);
 
+  if (!(await isVideoCoursesFeatureAvailable())) {
+    return { error: getOptionalFeatureUnavailableMessage("コースマスタ") };
+  }
+
   const id = formData.get("id");
 
   if (typeof id !== "string" || !id.trim()) {
@@ -272,6 +286,10 @@ export async function activateCourseAction(
   if (!currentUser) return { error: "認証が必要です。" };
 
   requirePermission(currentUser.roleCode, PERMISSIONS.USER_MANAGE);
+
+  if (!(await isVideoCoursesFeatureAvailable())) {
+    return { error: getOptionalFeatureUnavailableMessage("コースマスタ") };
+  }
 
   const id = formData.get("id");
 

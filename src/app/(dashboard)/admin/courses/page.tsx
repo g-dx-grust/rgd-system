@@ -1,13 +1,17 @@
 import { redirect } from "next/navigation";
 import { getCurrentUserProfile } from "@/lib/auth/session";
 import { can, PERMISSIONS } from "@/lib/rbac";
-import { listVideoCoursesAdmin } from "@/server/repositories/video-courses";
+import {
+  isVideoCoursesFeatureAvailable,
+  listVideoCoursesAdmin,
+} from "@/server/repositories/video-courses";
 import { listSubsidyPrograms } from "@/server/repositories/subsidy-programs";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { CourseFormTrigger } from "./CourseFormDialog";
 import { CourseToggleButton } from "./CourseToggleButton";
 import type { Metadata } from "next";
+import { getOptionalFeatureUnavailableMessage } from "@/lib/supabase/errors";
 
 export const metadata: Metadata = {
   title: "コースマスタ管理 | RGDシステム",
@@ -20,9 +24,10 @@ export default async function CoursesPage() {
     redirect("/dashboard");
   }
 
-  const [courses, subsidyPrograms] = await Promise.all([
+  const [courses, subsidyPrograms, isVideoCoursesAvailable] = await Promise.all([
     listVideoCoursesAdmin(),
     listSubsidyPrograms(false),
+    isVideoCoursesFeatureAvailable(),
   ]);
 
   return (
@@ -37,8 +42,18 @@ export default async function CoursesPage() {
             案件登録プルダウンで使用するコース一覧を管理します
           </p>
         </div>
-        <CourseFormTrigger subsidyPrograms={subsidyPrograms} />
+        {isVideoCoursesAvailable ? (
+          <CourseFormTrigger subsidyPrograms={subsidyPrograms} />
+        ) : null}
       </div>
+
+      {!isVideoCoursesAvailable ? (
+        <Card className="p-4">
+          <p className="text-sm text-[var(--color-text-muted)]">
+            {getOptionalFeatureUnavailableMessage("コースマスタ")}
+          </p>
+        </Card>
+      ) : null}
 
       {/* テーブル */}
       <Card className="p-0 overflow-hidden">
@@ -117,7 +132,17 @@ export default async function CoursesPage() {
                 </td>
               </tr>
             ))}
-            {courses.length === 0 && (
+            {!isVideoCoursesAvailable && (
+              <tr>
+                <td
+                  colSpan={6}
+                  className="px-4 py-10 text-center text-sm text-[var(--color-text-muted)]"
+                >
+                  {getOptionalFeatureUnavailableMessage("コースマスタ")}
+                </td>
+              </tr>
+            )}
+            {isVideoCoursesAvailable && courses.length === 0 && (
               <tr>
                 <td
                   colSpan={6}

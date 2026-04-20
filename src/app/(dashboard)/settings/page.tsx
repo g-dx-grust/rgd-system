@@ -2,13 +2,17 @@ import { redirect } from "next/navigation";
 import { getCurrentUserProfile } from "@/lib/auth/session";
 import { can, PERMISSIONS } from "@/lib/rbac";
 import { listUsers, listRoles } from "@/server/repositories/users";
-import { listVideoCoursesAdmin } from "@/server/repositories/video-courses";
+import {
+  isVideoCoursesFeatureAvailable,
+  listVideoCoursesAdmin,
+} from "@/server/repositories/video-courses";
 import { listSubsidyPrograms } from "@/server/repositories/subsidy-programs";
 import { listOperatingCompanies } from "@/server/repositories/operating-companies";
 import { CreateUserForm } from "@/app/(dashboard)/admin/users/CreateUserForm";
 import { CourseFormTrigger } from "@/app/(dashboard)/admin/courses/CourseFormDialog";
 import { SubsidyProgramForm } from "./SubsidyProgramForm";
 import { Badge, ButtonLink, Card } from "@/components/ui";
+import { getOptionalFeatureUnavailableMessage } from "@/lib/supabase/errors";
 
 export const metadata = {
   title: "設定 | RGDシステム",
@@ -44,12 +48,13 @@ export default async function SettingsPage() {
 
   const canManageUsers = can(user?.roleCode, PERMISSIONS.USER_MANAGE);
 
-  const [users, courses, subsidyPrograms, roles, operatingCompanies] = await Promise.all([
+  const [users, courses, subsidyPrograms, roles, operatingCompanies, isVideoCoursesAvailable] = await Promise.all([
     listUsers(),
     listVideoCoursesAdmin(),
     listSubsidyPrograms(false),
     canManageUsers ? listRoles() : Promise.resolve([]),
     listOperatingCompanies(),
+    isVideoCoursesFeatureAvailable(),
   ]);
 
   const activeUsers = users.filter((entry) => entry.isActive).length;
@@ -221,7 +226,7 @@ export default async function SettingsPage() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {canManageUsers ? <SubsidyProgramForm /> : null}
-            {canManageUsers ? (
+            {canManageUsers && isVideoCoursesAvailable ? (
               <CourseFormTrigger subsidyPrograms={subsidyPrograms} />
             ) : null}
             <ButtonLink href="/admin/courses" variant="secondary">
@@ -229,6 +234,14 @@ export default async function SettingsPage() {
             </ButtonLink>
           </div>
         </div>
+
+        {!isVideoCoursesAvailable ? (
+          <Card className="p-4">
+            <p className="text-sm text-[var(--color-text-muted)]">
+              {getOptionalFeatureUnavailableMessage("コースマスタ")}
+            </p>
+          </Card>
+        ) : null}
 
         <Card className="overflow-hidden p-0">
           <div className="border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-4 py-3">
@@ -282,7 +295,11 @@ export default async function SettingsPage() {
         </Card>
 
         <Card className="overflow-hidden p-0">
-          {courses.length === 0 ? (
+          {!isVideoCoursesAvailable ? (
+            <div className="py-10 text-center text-sm text-[var(--color-text-muted)]">
+              {getOptionalFeatureUnavailableMessage("コースマスタ")}
+            </div>
+          ) : courses.length === 0 ? (
             <div className="py-10 text-center text-sm text-[var(--color-text-muted)]">
               コースが登録されていません。
             </div>

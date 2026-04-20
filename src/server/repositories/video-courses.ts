@@ -5,6 +5,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
+  getOptionalFeatureUnavailableMessage,
   isMissingSupabaseColumnError,
   isMissingSupabaseRelationError,
 } from "@/lib/supabase/errors";
@@ -176,6 +177,16 @@ function buildLegacyVideoCourseWritePayload(input: {
   });
 }
 
+export async function isVideoCoursesFeatureAvailable(): Promise<boolean> {
+  const supabase = await createClient();
+  const { error } = await supabase.from("video_courses").select("id").limit(1);
+
+  if (!error) return true;
+  if (isMissingSupabaseRelationError(error, ["video_courses"])) return false;
+
+  throw new Error(error.message);
+}
+
 // ---------------------------------------------------------------
 // 案件フォーム用（アクティブのみ）
 // ---------------------------------------------------------------
@@ -338,6 +349,10 @@ export async function createVideoCourse(
     error = fallbackResult.error;
   }
 
+  if (error && isMissingSupabaseRelationError(error, ["video_courses"])) {
+    throw new Error(getOptionalFeatureUnavailableMessage("コースマスタ"));
+  }
+
   if (error || !data) throw new Error(error?.message ?? "コースの作成に失敗しました。");
   return String(data.id);
 }
@@ -368,6 +383,10 @@ export async function updateVideoCourse(
     error = fallbackResult.error;
   }
 
+  if (error && isMissingSupabaseRelationError(error, ["video_courses"])) {
+    throw new Error(getOptionalFeatureUnavailableMessage("コースマスタ"));
+  }
+
   if (error) throw new Error(error.message);
 }
 
@@ -377,6 +396,9 @@ export async function deactivateVideoCourse(id: string): Promise<void> {
     .from("video_courses")
     .update({ is_active: false })
     .eq("id", id);
+  if (error && isMissingSupabaseRelationError(error, ["video_courses"])) {
+    throw new Error(getOptionalFeatureUnavailableMessage("コースマスタ"));
+  }
   if (error) throw new Error(error.message);
 }
 
@@ -386,6 +408,9 @@ export async function activateVideoCourse(id: string): Promise<void> {
     .from("video_courses")
     .update({ is_active: true })
     .eq("id", id);
+  if (error && isMissingSupabaseRelationError(error, ["video_courses"])) {
+    throw new Error(getOptionalFeatureUnavailableMessage("コースマスタ"));
+  }
   if (error) throw new Error(error.message);
 }
 
