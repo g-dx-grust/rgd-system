@@ -3,7 +3,11 @@
  */
 
 import { createClient } from "@/lib/supabase/server";
-import { isMissingSupabaseRelationError } from "@/lib/supabase/errors";
+import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  isMissingSupabaseColumnError,
+  isMissingSupabaseRelationError,
+} from "@/lib/supabase/errors";
 
 // ---------------------------------------------------------------
 // 型定義
@@ -48,6 +52,128 @@ export interface UpdateVideoCourseInput {
   displayTemplate?: string | null;
   subsidyProgramId?: string | null;
   displayOrder?: number;
+}
+
+type VideoCourseRecord = Record<string, unknown>;
+
+const VIDEO_COURSE_ADMIN_SELECT_FIELDS = [
+  "id",
+  "name",
+  "description",
+  "code",
+  "display_template",
+  "is_active",
+  "display_order",
+  "subsidy_program_id",
+  "created_at",
+  "updated_at",
+  "subsidy_programs ( name )",
+].join(", ");
+
+const VIDEO_COURSE_ADMIN_SELECT_FIELDS_LEGACY = [
+  "id",
+  "name",
+  "description",
+  "is_active",
+  "display_order",
+  "created_at",
+  "updated_at",
+].join(", ");
+
+function getErrorMessage(error: unknown): string {
+  if (!error || typeof error !== "object") return "";
+
+  const details = error as {
+    message?: string | null;
+    details?: string | null;
+    hint?: string | null;
+  };
+
+  return [details.message, details.details, details.hint]
+    .filter((value): value is string => typeof value === "string" && value.length > 0)
+    .join(" ")
+    .toLowerCase();
+}
+
+function isLegacyVideoCourseSchemaError(error: unknown): boolean {
+  if (
+    isMissingSupabaseColumnError(error, [
+      "code",
+      "display_template",
+      "subsidy_program_id",
+    ])
+  ) {
+    return true;
+  }
+
+  const message = getErrorMessage(error);
+  return (
+    message.includes("subsidy_programs") &&
+    (message.includes("relationship") || message.includes("schema cache"))
+  );
+}
+
+function mapVideoCourseAdmin(row: VideoCourseRecord): VideoCourseAdminRow {
+  const subsidyProgramRelation = row["subsidy_programs"];
+  const subsidyProgram =
+    Array.isArray(subsidyProgramRelation)
+      ? subsidyProgramRelation[0]
+      : subsidyProgramRelation;
+  const subsidyProgramRecord =
+    subsidyProgram && typeof subsidyProgram === "object"
+      ? (subsidyProgram as VideoCourseRecord)
+      : null;
+
+  return {
+    id: String(row["id"]),
+    name: String(row["name"]),
+    description: row["description"] != null ? String(row["description"]) : null,
+    code: row["code"] != null ? String(row["code"]) : null,
+    displayTemplate:
+      row["display_template"] != null ? String(row["display_template"]) : null,
+    isActive: Boolean(row["is_active"]),
+    displayOrder: Number(row["display_order"]),
+    subsidyProgramId:
+      row["subsidy_program_id"] != null ? String(row["subsidy_program_id"]) : null,
+    subsidyProgramName:
+      subsidyProgramRecord?.["name"] != null ? String(subsidyProgramRecord["name"]) : null,
+    createdAt: String(row["created_at"]),
+    updatedAt: String(row["updated_at"]),
+  };
+}
+
+function buildVideoCourseWritePayload(input: {
+  name?: string;
+  description?: string | null;
+  code?: string | null;
+  displayTemplate?: string | null;
+  subsidyProgramId?: string | null;
+  displayOrder?: number;
+}) {
+  const payload: Record<string, unknown> = {};
+
+  if (input.name !== undefined) payload.name = input.name;
+  if (input.description !== undefined) payload.description = input.description;
+  if (input.code !== undefined) payload.code = input.code;
+  if (input.displayTemplate !== undefined) payload.display_template = input.displayTemplate;
+  if (input.subsidyProgramId !== undefined) {
+    payload.subsidy_program_id = input.subsidyProgramId;
+  }
+  if (input.displayOrder !== undefined) payload.display_order = input.displayOrder;
+
+  return payload;
+}
+
+function buildLegacyVideoCourseWritePayload(input: {
+  name?: string;
+  description?: string | null;
+  displayOrder?: number;
+}) {
+  return buildVideoCourseWritePayload({
+    name: input.name,
+    description: input.description,
+    displayOrder: input.displayOrder,
+  });
 }
 
 // ---------------------------------------------------------------
@@ -126,88 +252,93 @@ export async function getVideoCourse(id: string): Promise<{
 
 export async function listVideoCoursesAdmin(): Promise<VideoCourseAdminRow[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("video_courses")
-    .select(
-      `
-      id, name, description, code, display_template, is_active, display_order,
-      subsidy_program_id, created_at, updated_at,
-      subsidy_programs ( name )
-      `
-    )
+    .select(VIDEO_COURSE_ADMIN_SELECT_FIELDS)
     .order("display_order")
     .order("name");
+
+  if (error && isLegacyVideoCourseSchemaError(error)) {
+    const fallbackResult = await supabase
+      .from("video_courses")
+      .select(VIDEO_COURSE_ADMIN_SELECT_FIELDS_LEGACY)
+      .order("display_order")
+      .order("name");
+    data = fallbackResult.data;
+    error = fallbackResult.error;
+  }
+
   if (error) {
     if (isMissingSupabaseRelationError(error, ["video_courses"])) return [];
     throw new Error(error.message);
   }
-  return (data ?? []).map((r) => {
-    const sp = r.subsidy_programs as { name?: string } | null;
-    return {
-      id: String(r.id),
-      name: String(r.name),
-      description: r.description != null ? String(r.description) : null,
-      code: r.code != null ? String(r.code) : null,
-      displayTemplate: r.display_template != null ? String(r.display_template) : null,
-      isActive: Boolean(r.is_active),
-      displayOrder: Number(r.display_order),
-      subsidyProgramId: r.subsidy_program_id ? String(r.subsidy_program_id) : null,
-      subsidyProgramName: sp?.name ?? null,
-      createdAt: String(r.created_at),
-      updatedAt: String(r.updated_at),
-    };
-  });
+
+  return ((data ?? []) as unknown as VideoCourseRecord[]).map(mapVideoCourseAdmin);
 }
 
 export async function getVideoCourseAdmin(
   id: string
 ): Promise<VideoCourseAdminRow | null> {
   const supabase = await createClient();
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("video_courses")
-    .select(
-      `
-      id, name, description, code, display_template, is_active, display_order,
-      subsidy_program_id, created_at, updated_at,
-      subsidy_programs ( name )
-      `
-    )
+    .select(VIDEO_COURSE_ADMIN_SELECT_FIELDS)
     .eq("id", id)
     .single();
+
+  if (error && isLegacyVideoCourseSchemaError(error)) {
+    const fallbackResult = await supabase
+      .from("video_courses")
+      .select(VIDEO_COURSE_ADMIN_SELECT_FIELDS_LEGACY)
+      .eq("id", id)
+      .single();
+    data = fallbackResult.data;
+    error = fallbackResult.error;
+  }
+
   if (error || !data) return null;
-  const sp = data.subsidy_programs as { name?: string } | null;
-  return {
-    id: String(data.id),
-    name: String(data.name),
-    description: data.description != null ? String(data.description) : null,
-    code: data.code != null ? String(data.code) : null,
-    displayTemplate: data.display_template != null ? String(data.display_template) : null,
-    isActive: Boolean(data.is_active),
-    displayOrder: Number(data.display_order),
-    subsidyProgramId: data.subsidy_program_id ? String(data.subsidy_program_id) : null,
-    subsidyProgramName: sp?.name ?? null,
-    createdAt: String(data.created_at),
-    updatedAt: String(data.updated_at),
-  };
+
+  return mapVideoCourseAdmin(data as unknown as VideoCourseRecord);
 }
 
 export async function createVideoCourse(
   input: CreateVideoCourseInput
 ): Promise<string> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
+  // Server Action 側で権限チェック済みのため、
+  // 旧DBで INSERT/UPDATE 用RLSが不足している環境でも保存できるよう service role を使う。
+  const supabase = createAdminClient();
+  let { data, error } = await supabase
     .from("video_courses")
-    .insert({
-      name: input.name,
-      description: input.description ?? null,
-      code: input.code ?? null,
-      display_template: input.displayTemplate ?? null,
-      subsidy_program_id: input.subsidyProgramId ?? null,
-      display_order: input.displayOrder ?? 0,
-    })
+    .insert(
+      buildVideoCourseWritePayload({
+        name: input.name,
+        description: input.description ?? null,
+        code: input.code ?? null,
+        displayTemplate: input.displayTemplate ?? null,
+        subsidyProgramId: input.subsidyProgramId ?? null,
+        displayOrder: input.displayOrder ?? 0,
+      })
+    )
     .select("id")
     .single();
-  if (error) throw new Error(error.message);
+
+  if (error && isLegacyVideoCourseSchemaError(error)) {
+    const fallbackResult = await supabase
+      .from("video_courses")
+      .insert(
+        buildLegacyVideoCourseWritePayload({
+          name: input.name,
+          description: input.description ?? null,
+          displayOrder: input.displayOrder ?? 0,
+        })
+      )
+      .select("id")
+      .single();
+    data = fallbackResult.data;
+    error = fallbackResult.error;
+  }
+
+  if (error || !data) throw new Error(error?.message ?? "コースの作成に失敗しました。");
   return String(data.id);
 }
 
@@ -215,25 +346,33 @@ export async function updateVideoCourse(
   id: string,
   input: UpdateVideoCourseInput
 ): Promise<void> {
-  const supabase = await createClient();
-  const patch: Record<string, unknown> = {};
-  if (input.name !== undefined) patch.name = input.name;
-  if (input.description !== undefined) patch.description = input.description;
-  if (input.code !== undefined) patch.code = input.code;
-  if (input.displayTemplate !== undefined) patch.display_template = input.displayTemplate;
-  if (input.subsidyProgramId !== undefined)
-    patch.subsidy_program_id = input.subsidyProgramId;
-  if (input.displayOrder !== undefined) patch.display_order = input.displayOrder;
+  const supabase = createAdminClient();
+  const patch = buildVideoCourseWritePayload(input);
 
-  const { error } = await supabase
+  let { error } = await supabase
     .from("video_courses")
     .update(patch)
     .eq("id", id);
+
+  if (error && isLegacyVideoCourseSchemaError(error)) {
+    const fallbackPatch = buildLegacyVideoCourseWritePayload({
+      name: input.name,
+      description: input.description,
+      displayOrder: input.displayOrder,
+    });
+
+    const fallbackResult = await supabase
+      .from("video_courses")
+      .update(fallbackPatch)
+      .eq("id", id);
+    error = fallbackResult.error;
+  }
+
   if (error) throw new Error(error.message);
 }
 
 export async function deactivateVideoCourse(id: string): Promise<void> {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { error } = await supabase
     .from("video_courses")
     .update({ is_active: false })
@@ -242,7 +381,7 @@ export async function deactivateVideoCourse(id: string): Promise<void> {
 }
 
 export async function activateVideoCourse(id: string): Promise<void> {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { error } = await supabase
     .from("video_courses")
     .update({ is_active: true })

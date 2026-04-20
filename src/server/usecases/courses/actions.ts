@@ -25,6 +25,36 @@ export interface CourseActionResult {
 const COURSES_PATH = "/admin/courses";
 const SETTINGS_PATH = "/settings";
 
+function getCourseActionErrorMessage(error: unknown, fallback: string): string {
+  const message = error instanceof Error ? error.message : fallback;
+  const normalizedMessage = message.toLowerCase();
+
+  if (normalizedMessage.includes("duplicate") || normalizedMessage.includes("unique")) {
+    return "同じ略称のコースがすでに存在します。";
+  }
+
+  if (normalizedMessage.includes("foreign key")) {
+    return "選択した助成金種別が見つかりません。画面を再読み込みして再度お試しください。";
+  }
+
+  if (
+    normalizedMessage.includes("row-level security") ||
+    normalizedMessage.includes("permission denied")
+  ) {
+    return "コースマスタを更新する権限がありません。管理者権限で再度お試しください。";
+  }
+
+  if (
+    normalizedMessage.includes("display_template") ||
+    normalizedMessage.includes("subsidy_program_id") ||
+    normalizedMessage.includes("video_courses")
+  ) {
+    return "コースマスタ機能のデータベース反映が未完了です。migration 適用後に再度お試しください。";
+  }
+
+  return message;
+}
+
 /**
  * コースを新規作成する
  */
@@ -57,31 +87,48 @@ export async function createCourseAction(
     return { error: "表示順序は数値で入力してください。" };
   }
 
-  const courseId = await createVideoCourse({
-    name: name.trim(),
-    subsidyProgramId:
-      typeof subsidyProgramId === "string" && subsidyProgramId.trim()
-        ? subsidyProgramId.trim()
-        : null,
-    code:
-      typeof code === "string" && code.trim() ? code.trim() : null,
-    displayTemplate:
-      typeof displayTemplate === "string" && displayTemplate.trim()
-        ? displayTemplate.trim()
-        : null,
-    description:
-      typeof description === "string" && description.trim()
-        ? description.trim()
-        : null,
-    displayOrder,
-  });
+  const normalizedName = name.trim();
+  const normalizedSubsidyProgramId =
+    typeof subsidyProgramId === "string" && subsidyProgramId.trim()
+      ? subsidyProgramId.trim()
+      : null;
+  const normalizedCode =
+    typeof code === "string" && code.trim() ? code.trim() : null;
+  const normalizedDisplayTemplate =
+    typeof displayTemplate === "string" && displayTemplate.trim()
+      ? displayTemplate.trim()
+      : null;
+  const normalizedDescription =
+    typeof description === "string" && description.trim()
+      ? description.trim()
+      : null;
+
+  let courseId: string;
+  try {
+    courseId = await createVideoCourse({
+      name: normalizedName,
+      subsidyProgramId: normalizedSubsidyProgramId,
+      code: normalizedCode,
+      displayTemplate: normalizedDisplayTemplate,
+      description: normalizedDescription,
+      displayOrder,
+    });
+  } catch (error) {
+    return {
+      error: getCourseActionErrorMessage(error, "コースの作成に失敗しました。"),
+    };
+  }
 
   await writeAuditLog({
     userId: currentUser.id,
     action: "course_create",
     targetType: "video_course",
     targetId: courseId,
-    metadata: { name, subsidyProgramId, code },
+    metadata: {
+      name: normalizedName,
+      subsidyProgramId: normalizedSubsidyProgramId,
+      code: normalizedCode,
+    },
   });
 
   revalidatePath(COURSES_PATH);
@@ -125,31 +172,48 @@ export async function updateCourseAction(
     return { error: "表示順序は数値で入力してください。" };
   }
 
-  await updateVideoCourse(id.trim(), {
-    name: name.trim(),
-    subsidyProgramId:
-      typeof subsidyProgramId === "string" && subsidyProgramId.trim()
-        ? subsidyProgramId.trim()
-        : null,
-    code:
-      typeof code === "string" && code.trim() ? code.trim() : null,
-    displayTemplate:
-      typeof displayTemplate === "string" && displayTemplate.trim()
-        ? displayTemplate.trim()
-        : null,
-    description:
-      typeof description === "string" && description.trim()
-        ? description.trim()
-        : null,
-    displayOrder,
-  });
+  const normalizedId = id.trim();
+  const normalizedName = name.trim();
+  const normalizedSubsidyProgramId =
+    typeof subsidyProgramId === "string" && subsidyProgramId.trim()
+      ? subsidyProgramId.trim()
+      : null;
+  const normalizedCode =
+    typeof code === "string" && code.trim() ? code.trim() : null;
+  const normalizedDisplayTemplate =
+    typeof displayTemplate === "string" && displayTemplate.trim()
+      ? displayTemplate.trim()
+      : null;
+  const normalizedDescription =
+    typeof description === "string" && description.trim()
+      ? description.trim()
+      : null;
+
+  try {
+    await updateVideoCourse(normalizedId, {
+      name: normalizedName,
+      subsidyProgramId: normalizedSubsidyProgramId,
+      code: normalizedCode,
+      displayTemplate: normalizedDisplayTemplate,
+      description: normalizedDescription,
+      displayOrder,
+    });
+  } catch (error) {
+    return {
+      error: getCourseActionErrorMessage(error, "コースの更新に失敗しました。"),
+    };
+  }
 
   await writeAuditLog({
     userId: currentUser.id,
     action: "course_update",
     targetType: "video_course",
-    targetId: id.trim(),
-    metadata: { name, subsidyProgramId, code },
+    targetId: normalizedId,
+    metadata: {
+      name: normalizedName,
+      subsidyProgramId: normalizedSubsidyProgramId,
+      code: normalizedCode,
+    },
   });
 
   revalidatePath(COURSES_PATH);
@@ -175,13 +239,21 @@ export async function deactivateCourseAction(
     return { error: "コースIDが不正です。" };
   }
 
-  await deactivateVideoCourse(id.trim());
+  const normalizedId = id.trim();
+
+  try {
+    await deactivateVideoCourse(normalizedId);
+  } catch (error) {
+    return {
+      error: getCourseActionErrorMessage(error, "コースの停止に失敗しました。"),
+    };
+  }
 
   await writeAuditLog({
     userId: currentUser.id,
     action: "course_deactivate",
     targetType: "video_course",
-    targetId: id.trim(),
+    targetId: normalizedId,
   });
 
   revalidatePath(COURSES_PATH);
@@ -207,13 +279,21 @@ export async function activateCourseAction(
     return { error: "コースIDが不正です。" };
   }
 
-  await activateVideoCourse(id.trim());
+  const normalizedId = id.trim();
+
+  try {
+    await activateVideoCourse(normalizedId);
+  } catch (error) {
+    return {
+      error: getCourseActionErrorMessage(error, "コースの有効化に失敗しました。"),
+    };
+  }
 
   await writeAuditLog({
     userId: currentUser.id,
     action: "course_activate",
     targetType: "video_course",
-    targetId: id.trim(),
+    targetId: normalizedId,
   });
 
   revalidatePath(COURSES_PATH);
