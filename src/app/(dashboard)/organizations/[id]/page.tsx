@@ -5,7 +5,8 @@ import { listCases } from "@/server/repositories/cases";
 import { getCurrentUserProfile } from "@/lib/auth/session";
 import { can, PERMISSIONS } from "@/lib/rbac";
 import { CaseStatusBadge } from "@/components/domain";
-import { ButtonLink } from "@/components/ui";
+import { ButtonLink, FormActionButton } from "@/components/ui";
+import { deleteOrganizationAction } from "@/server/usecases/organizations/actions";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -46,9 +47,18 @@ export default async function OrganizationDetailPage({
           <h1 className="text-[22px] font-semibold text-[var(--color-text)]">{org.legalName}</h1>
         </div>
         {canEdit && (
-          <ButtonLink href={`/organizations/${id}/edit`} variant="secondary" size="sm">
-            編集
-          </ButtonLink>
+          <div className="flex items-center gap-2">
+            <ButtonLink href={`/organizations/${id}/edit`} variant="secondary" size="sm">
+              編集
+            </ButtonLink>
+            <FormActionButton
+              action={deleteOrganizationAction}
+              fields={{ organizationId: id }}
+              label="削除"
+              pendingLabel="削除中..."
+              confirmMessage={`企業「${org.legalName}」を削除しますか？`}
+            />
+          </div>
         )}
       </div>
 

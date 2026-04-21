@@ -19,6 +19,7 @@ import type {
   DocumentType,
 } from "@/types/documents";
 import type { RoleCode } from "@/lib/rbac";
+import { can, PERMISSIONS } from "@/lib/rbac";
 
 interface Props {
   caseId:         string;
@@ -45,6 +46,7 @@ export function DocumentTabClient({
   const [isPending, startTransition]                = useTransition();
 
   const canEdit = ["admin", "operations_manager", "operations_staff"].includes(userRoleCode);
+  const canDelete = can(userRoleCode, PERMISSIONS.DOCUMENT_DELETE);
 
   const refresh = useCallback(() => {
     router.refresh();
@@ -189,6 +191,7 @@ export function DocumentTabClient({
                 requirement={req}
                 caseId={caseId}
                 organizationId={organizationId}
+                canDelete={canDelete}
                 onRefresh={refresh}
               />
             ))

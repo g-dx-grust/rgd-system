@@ -15,13 +15,18 @@ import { DocumentPreview } from "./DocumentPreview";
 import { ReturnModal } from "./ReturnModal";
 import { RequirementStatusBadge, ReviewStatusBadge } from "./ReviewStatusBadge";
 import { Button } from "@/components/ui/Button";
-import { approveDocumentAction } from "@/server/usecases/documents/actions";
+import { AsyncActionButton } from "@/components/ui";
+import {
+  approveDocumentAction,
+  deleteDocumentAction,
+} from "@/server/usecases/documents/actions";
 import type { DocumentRequirement } from "@/types/documents";
 
 interface Props {
   requirement:     DocumentRequirement;
   caseId:          string;
   organizationId:  string;
+  canDelete:       boolean;
   onRefresh:       () => void;
 }
 
@@ -29,6 +34,7 @@ export function DocumentRequirementRow({
   requirement,
   caseId,
   organizationId,
+  canDelete,
   onRefresh,
 }: Props) {
   const [uploading, setUploading]         = useState(false);
@@ -131,6 +137,21 @@ export function DocumentRequirementRow({
           >
             {uploading ? "閉じる" : latestDocument ? "差替え" : "提出"}
           </Button>
+          {latestDocument && canDelete && (
+            <AsyncActionButton
+              label="削除"
+              pendingLabel="削除中..."
+              confirmMessage={`書類「${latestDocument.originalFilename}」を削除しますか？`}
+              action={() => deleteDocumentAction(latestDocument.id, caseId)}
+              refreshOnSuccess={false}
+              onSuccess={() => {
+                setUploading(false);
+                setPreviewDocId(null);
+                setShowReturn(false);
+                onRefresh();
+              }}
+            />
+          )}
         </div>
       </div>
 

@@ -3,6 +3,7 @@
  */
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export interface TaskRow {
   id: string;
@@ -217,6 +218,19 @@ export async function updateTask(
   }
 
   const { error } = await supabase.from("tasks").update(updates).eq("id", id);
+
+  if (error) throw new Error(error.message);
+}
+
+// ---------------------------------------------------------------
+// タスク削除
+// ---------------------------------------------------------------
+export async function deleteTask(id: string): Promise<void> {
+  const supabase = createAdminClient();
+  const { error } = await supabase
+    .from("tasks")
+    .delete()
+    .eq("id", id);
 
   if (error) throw new Error(error.message);
 }

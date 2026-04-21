@@ -165,6 +165,42 @@ export async function updateOrganization(id: string, input: UpdateOrganizationIn
 }
 
 // ---------------------------------------------------------------
+// 企業削除（論理削除）
+// ---------------------------------------------------------------
+export async function deleteOrganization(id: string): Promise<void> {
+  const supabase = await createClient();
+
+  const { count, error: caseCountError } = await supabase
+    .from("cases")
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", id)
+    .is("deleted_at", null);
+
+  if (caseCountError) throw new Error(caseCountError.message);
+  if ((count ?? 0) > 0) {
+    throw new Error("案件が紐付いている企業は削除できません。先に案件を削除または移管してください。");
+  }
+
+  const deletedAt = new Date().toISOString();
+
+  const { error: contactError } = await supabase
+    .from("organization_contacts")
+    .update({ deleted_at: deletedAt })
+    .eq("organization_id", id)
+    .is("deleted_at", null);
+
+  if (contactError) throw new Error(contactError.message);
+
+  const { error } = await supabase
+    .from("organizations")
+    .update({ deleted_at: deletedAt })
+    .eq("id", id)
+    .is("deleted_at", null);
+
+  if (error) throw new Error(error.message);
+}
+
+// ---------------------------------------------------------------
 // 担当者作成
 // ---------------------------------------------------------------
 export async function createContact(input: CreateContactInput): Promise<OrganizationContactRow> {

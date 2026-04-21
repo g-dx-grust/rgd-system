@@ -8,10 +8,12 @@ import {
 import { listSubsidyPrograms } from "@/server/repositories/subsidy-programs";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { FormActionButton } from "@/components/ui";
 import { CourseFormTrigger } from "./CourseFormDialog";
 import { CourseToggleButton } from "./CourseToggleButton";
 import type { Metadata } from "next";
 import { getOptionalFeatureUnavailableMessage } from "@/lib/supabase/errors";
+import { deleteCourseAction } from "@/server/usecases/courses/actions";
 
 export const metadata: Metadata = {
   title: "コースマスタ管理 | RGDシステム",
@@ -123,6 +125,13 @@ export default async function CoursesPage() {
                     <CourseFormTrigger
                       course={course}
                       subsidyPrograms={subsidyPrograms}
+                    />
+                    <FormActionButton
+                      action={deleteCourseAction}
+                      fields={{ id: course.id }}
+                      label="削除"
+                      pendingLabel="削除中..."
+                      confirmMessage={`コース「${course.name}」を削除しますか？`}
                     />
                     <CourseToggleButton
                       courseId={course.id}

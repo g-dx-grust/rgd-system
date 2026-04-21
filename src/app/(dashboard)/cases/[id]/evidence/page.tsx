@@ -20,8 +20,12 @@ import { createClient } from "@/lib/supabase/server";
 import { isMissingSupabaseRelationError } from "@/lib/supabase/errors";
 import { EvidenceFormClient } from "./EvidenceFormClient";
 import { CompletionCertClient } from "./CompletionCertClient";
-import { updateEvidenceStatusAction } from "@/server/usecases/evidence/actions";
+import {
+  updateEvidenceStatusAction,
+  deleteEvidenceItemAction,
+} from "@/server/usecases/evidence/actions";
 import { CasePageShell } from "@/components/domain";
+import { FormActionButton } from "@/components/ui";
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 type CompletionCertificateRow = {
@@ -290,32 +294,38 @@ function EvidenceRow({
       </td>
       {canEdit && (
         <td className="px-4 py-3">
-          {nextActions.length > 0 ? (
-            <div className="flex flex-wrap items-center gap-2">
-              {nextActions.map((act) => (
-                <form
-                  key={act.status}
-                  action={
-                    updateEvidenceStatusAction.bind(null, null) as unknown as (
-                      fd: FormData
-                    ) => Promise<void>
-                  }
+          <div className="flex flex-wrap items-center gap-2">
+            {nextActions.map((act) => (
+              <form
+                key={act.status}
+                action={
+                  updateEvidenceStatusAction.bind(null, null) as unknown as (
+                    fd: FormData
+                  ) => Promise<void>
+                }
+              >
+                <input type="hidden" name="caseId" value={caseId} />
+                <input type="hidden" name="evidenceId" value={item.id} />
+                <input type="hidden" name="status" value={act.status} />
+                <button
+                  type="submit"
+                  className="text-xs text-[var(--color-accent)] hover:underline"
                 >
-                  <input type="hidden" name="caseId" value={caseId} />
-                  <input type="hidden" name="evidenceId" value={item.id} />
-                  <input type="hidden" name="status" value={act.status} />
-                  <button
-                    type="submit"
-                    className="text-xs text-[var(--color-accent)] hover:underline"
-                  >
-                    {act.label}
-                  </button>
-                </form>
-              ))}
-            </div>
-          ) : (
-            <span className="text-xs text-[var(--color-text-muted)]">—</span>
-          )}
+                  {act.label}
+                </button>
+              </form>
+            ))}
+            <FormActionButton
+              action={deleteEvidenceItemAction}
+              fields={{ caseId, evidenceId: item.id }}
+              label="削除"
+              pendingLabel="削除中..."
+              confirmMessage={`証憑「${item.title}」を削除しますか？`}
+            />
+            {nextActions.length === 0 && (
+              <span className="text-xs text-[var(--color-text-muted)]">状態変更なし</span>
+            )}
+          </div>
         </td>
       )}
     </tr>

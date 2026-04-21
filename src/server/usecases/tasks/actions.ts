@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getCurrentUserProfile } from "@/lib/auth/session";
 import { PERMISSIONS, requirePermission } from "@/lib/rbac";
 import { writeAuditLog } from "@/server/repositories/audit-log";
-import { createTask, updateTask } from "@/server/repositories/tasks";
+import { createTask, updateTask, deleteTask } from "@/server/repositories/tasks";
 
 export interface ActionResult {
   error?: string;
@@ -117,6 +117,41 @@ export async function updateTaskAction(
     return {
       error:
         err instanceof Error ? err.message : "タスクの更新に失敗しました。",
+    };
+  }
+
+  revalidateTaskRelatedPaths(caseId);
+  return { success: true };
+}
+
+export async function deleteTaskAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  const user = await getCurrentUserProfile();
+  if (!user) return { error: "認証が必要です。" };
+
+  requirePermission(user.roleCode, PERMISSIONS.TASK_MANAGE);
+
+  const caseId = String(formData.get("caseId") ?? "").trim();
+  const taskId = String(formData.get("taskId") ?? "").trim();
+
+  if (!caseId || !taskId) return { error: "パラメータが不正です。" };
+
+  try {
+    await deleteTask(taskId);
+
+    await writeAuditLog({
+      userId: user.id,
+      action: "task_delete",
+      targetType: "tasks",
+      targetId: taskId,
+      metadata: { caseId },
+    });
+  } catch (err) {
+    return {
+      error:
+        err instanceof Error ? err.message : "タスクの削除に失敗しました。",
     };
   }
 

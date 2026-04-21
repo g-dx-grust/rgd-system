@@ -12,6 +12,7 @@ import {
   createOrganization,
   updateOrganization,
   createContact,
+  deleteOrganization,
 } from "@/server/repositories/organizations";
 import { writeAuditLog } from "@/server/repositories/audit-log";
 
@@ -138,4 +139,35 @@ export async function createContactAction(
 
   revalidatePath(`/organizations/${organizationId}`);
   return { success: true };
+}
+
+// ---------------------------------------------------------------
+// 企業削除
+// ---------------------------------------------------------------
+export async function deleteOrganizationAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  const user = await getCurrentUserProfile();
+  if (!user) return { error: "認証が必要です。" };
+
+  requirePermission(user.roleCode, PERMISSIONS.CLIENT_EDIT);
+
+  const organizationId = String(formData.get("organizationId") ?? "").trim();
+  if (!organizationId) return { error: "企業IDが不正です。" };
+
+  try {
+    await deleteOrganization(organizationId);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "企業の削除に失敗しました。" };
+  }
+
+  await writeAuditLog({
+    userId:     user.id,
+    action:     "organization_delete",
+    targetType: "organizations",
+    targetId:   organizationId,
+  });
+
+  redirect("/organizations");
 }

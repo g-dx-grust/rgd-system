@@ -37,7 +37,11 @@ const ACTION_LABELS: Record<string, string> = {
   course_update:              "コース更新",
   course_activate:            "コース有効化",
   course_deactivate:          "コース無効化",
+  course_delete:              "コース削除",
   subsidy_program_create:     "助成金種別作成",
+  subsidy_program_delete:     "助成金種別削除",
+  organization_delete:        "企業削除",
+  task_delete:                "タスク削除",
   account_sheet_issue:        "アカウント発行シート出力",
   specialist_submission_record: "社労士提出記録",
   specialist_final_complete:  "社労士最終申請完了",
@@ -49,6 +53,7 @@ const ACTION_LABELS: Record<string, string> = {
 const FILTER_ACTIONS: AuditAction[] = [
   "case_create", "case_update", "case_delete", "case_status_change",
   "document_upload", "document_return", "document_delete",
+  "task_delete", "organization_delete", "course_delete", "subsidy_program_delete",
   "user_create", "user_role_change", "user_password_reset",
   "login", "login_failed", "bulk_owner_change",
 ];

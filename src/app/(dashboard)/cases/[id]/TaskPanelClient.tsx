@@ -9,7 +9,9 @@ import {
 import {
   createTaskAction,
   updateTaskAction,
+  deleteTaskAction,
 } from "@/server/usecases/tasks/actions";
+import { FormActionButton } from "@/components/ui/FormActionButton";
 
 interface TaskItem {
   id: string;
@@ -268,13 +270,24 @@ function TaskUpdateForm({
             </>
           )}
         </div>
-        <button
-          type="submit"
-          disabled={isPending}
-          className="rounded-[var(--radius-sm)] bg-[var(--color-accent)] px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
-        >
-          {isPending ? "保存中..." : "更新する"}
-        </button>
+        <div className="flex items-center gap-2">
+          <FormActionButton
+            action={deleteTaskAction}
+            fields={{ caseId, taskId: task.id }}
+            label="削除"
+            pendingLabel="削除中..."
+            confirmMessage={`タスク「${task.title}」を削除しますか？`}
+            refreshOnSuccess={false}
+            onSuccess={() => router.refresh()}
+          />
+          <button
+            type="submit"
+            disabled={isPending}
+            className="rounded-[var(--radius-sm)] bg-[var(--color-accent)] px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
+          >
+            {isPending ? "保存中..." : "更新する"}
+          </button>
+        </div>
       </div>
     </form>
   );

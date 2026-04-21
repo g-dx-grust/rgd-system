@@ -11,8 +11,10 @@ import { listOperatingCompanies } from "@/server/repositories/operating-companie
 import { CreateUserForm } from "@/app/(dashboard)/admin/users/CreateUserForm";
 import { CourseFormTrigger } from "@/app/(dashboard)/admin/courses/CourseFormDialog";
 import { SubsidyProgramForm } from "./SubsidyProgramForm";
-import { Badge, ButtonLink, Card } from "@/components/ui";
+import { Badge, ButtonLink, Card, FormActionButton } from "@/components/ui";
 import { getOptionalFeatureUnavailableMessage } from "@/lib/supabase/errors";
+import { deleteSubsidyProgramAction } from "@/server/usecases/subsidy-programs/actions";
+import { deleteCourseAction } from "@/server/usecases/courses/actions";
 
 export const metadata = {
   title: "設定 | RGDシステム",
@@ -146,6 +148,11 @@ export default async function SettingsPage() {
                     <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-sub)]">
                       状態
                     </th>
+                    {canManageUsers && (
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-sub)]">
+                        操作
+                      </th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--color-border)]">
@@ -286,6 +293,17 @@ export default async function SettingsPage() {
                           {program.active ? "有効" : "無効"}
                         </Badge>
                       </td>
+                      {canManageUsers && (
+                        <td className="px-4 py-3">
+                          <FormActionButton
+                            action={deleteSubsidyProgramAction}
+                            fields={{ id: program.id }}
+                            label="削除"
+                            pendingLabel="削除中..."
+                            confirmMessage={`助成金種別「${program.name}」を削除しますか？`}
+                          />
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -323,6 +341,11 @@ export default async function SettingsPage() {
                     <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-sub)]">
                       更新日
                     </th>
+                    {canManageUsers && (
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-sub)]">
+                        操作
+                      </th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--color-border)]">
@@ -350,6 +373,17 @@ export default async function SettingsPage() {
                       <td className="px-4 py-3 text-xs text-[var(--color-text-muted)]">
                         {formatDate(course.updatedAt)}
                       </td>
+                      {canManageUsers && (
+                        <td className="px-4 py-3">
+                          <FormActionButton
+                            action={deleteCourseAction}
+                            fields={{ id: course.id }}
+                            label="削除"
+                            pendingLabel="削除中..."
+                            confirmMessage={`コース「${course.name}」を削除しますか？`}
+                          />
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>

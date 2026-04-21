@@ -3,9 +3,10 @@ import { listCases } from "@/server/repositories/cases";
 import { getCurrentUserProfile } from "@/lib/auth/session";
 import { can, PERMISSIONS } from "@/lib/rbac";
 import { CaseStatusBadge, CaseFilterBar, SavedFilterBar } from "@/components/domain";
-import { ButtonLink, Badge } from "@/components/ui";
+import { ButtonLink, Badge, FormActionButton } from "@/components/ui";
 import type { CaseStatus } from "@/lib/constants/case-status";
 import { listOperatingCompanies } from "@/server/repositories/operating-companies";
+import { deleteCaseAction } from "@/server/usecases/cases/actions";
 
 const INACTIVE_STATUSES: CaseStatus[] = ["completed", "cancelled", "on_hold"];
 
@@ -69,6 +70,7 @@ export default async function CasesPage({
 
   const canCreate  = can(user?.roleCode, PERMISSIONS.CASE_CREATE);
   const canViewAll = can(user?.roleCode, PERMISSIONS.CASE_VIEW_ALL);
+  const canDelete  = can(user?.roleCode, PERMISSIONS.CASE_DELETE);
   const totalPages = Math.ceil(result.total / result.perPage);
 
   return (
@@ -130,6 +132,11 @@ export default async function CasesPage({
                     </th>
                   )
                 )}
+                {canDelete && (
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-[var(--color-text-sub)] whitespace-nowrap">
+                    操作
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--color-border)]">
@@ -180,6 +187,17 @@ export default async function CasesPage({
                     <td className={["px-4 py-3 text-xs", isNextDueSoon ? "text-[var(--color-warning)] font-medium" : "text-[var(--color-text-sub)]"].join(" ")}>
                       {c.nextDueDate ?? "—"}
                     </td>
+                    {canDelete && (
+                      <td className="px-4 py-3">
+                        <FormActionButton
+                          action={deleteCaseAction}
+                          fields={{ caseId: c.id }}
+                          label="削除"
+                          pendingLabel="削除中..."
+                          confirmMessage={`案件「${c.caseName}」を削除しますか？関連する受講者や進行データは一覧から見えなくなります。`}
+                        />
+                      </td>
+                    )}
                   </tr>
                 );
               })}

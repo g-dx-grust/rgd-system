@@ -5,11 +5,12 @@ import { countParticipants } from "@/server/repositories/participants";
 import { getCurrentUserProfile } from "@/lib/auth/session";
 import { can, PERMISSIONS } from "@/lib/rbac";
 import { CasePageShell, NextBestAction } from "@/components/domain";
-import { ButtonLink } from "@/components/ui";
+import { ButtonLink, FormActionButton } from "@/components/ui";
 import { computeNextBestAction } from "@/server/services/cases";
 import { CASE_STATUS_LABELS } from "@/lib/constants/case-status";
 import { AcceptanceDateFormClient } from "./AcceptanceDateFormClient";
 import { TaskPanelClient } from "./TaskPanelClient";
+import { deleteCaseAction } from "@/server/usecases/cases/actions";
 
 export async function generateMetadata({
   params,
@@ -40,6 +41,7 @@ export default async function CaseDetailPage({
   if (!caseData) notFound();
 
   const canEdit = can(user?.roleCode, PERMISSIONS.CASE_EDIT);
+  const canDelete = can(user?.roleCode, PERMISSIONS.CASE_DELETE);
   const canStatusChange = can(user?.roleCode, PERMISSIONS.CASE_STATUS_CHANGE);
   const canManageTasks = can(user?.roleCode, PERMISSIONS.TASK_MANAGE);
   const nextAction = computeNextBestAction(tasks);
@@ -61,14 +63,27 @@ export default async function CaseDetailPage({
       sectionTitle="案件概要"
       sectionDescription="現在の案件状況と対応タスクを確認できます。"
       action={
-        canEdit ? (
-          <ButtonLink
-            href={`/cases/${id}/edit`}
-            variant="secondary"
-            size="sm"
-          >
-            編集
-          </ButtonLink>
+        canEdit || canDelete ? (
+          <div className="flex items-center gap-2">
+            {canEdit && (
+              <ButtonLink
+                href={`/cases/${id}/edit`}
+                variant="secondary"
+                size="sm"
+              >
+                編集
+              </ButtonLink>
+            )}
+            {canDelete && (
+              <FormActionButton
+                action={deleteCaseAction}
+                fields={{ caseId: id }}
+                label="削除"
+                pendingLabel="削除中..."
+                confirmMessage={`案件「${caseData.caseName}」を削除しますか？関連する受講者や進行データは一覧から見えなくなります。`}
+              />
+            )}
+          </div>
         ) : null
       }
     >

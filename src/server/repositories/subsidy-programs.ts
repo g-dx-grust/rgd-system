@@ -4,7 +4,10 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { isMissingSupabaseColumnError } from "@/lib/supabase/errors";
+import {
+  isMissingSupabaseColumnError,
+  isMissingSupabaseRelationError,
+} from "@/lib/supabase/errors";
 
 export interface SubsidyProgramRow {
   id: string;
@@ -153,4 +156,37 @@ export async function createSubsidyProgram(
 
   if (error || !data) throw new Error(error?.message ?? "助成金種別の作成に失敗しました。");
   return String(data.id);
+}
+
+export async function deleteSubsidyProgram(id: string): Promise<void> {
+  const supabase = createAdminClient();
+
+  const { count: caseCount, error: caseError } = await supabase
+    .from("cases")
+    .select("id", { count: "exact", head: true })
+    .eq("subsidy_program_id", id);
+
+  if (caseError) throw new Error(caseError.message);
+  if ((caseCount ?? 0) > 0) {
+    throw new Error("案件で使用中の助成金種別は削除できません。");
+  }
+
+  const { count: courseCount, error: courseError } = await supabase
+    .from("video_courses")
+    .select("id", { count: "exact", head: true })
+    .eq("subsidy_program_id", id);
+
+  if (courseError && !isMissingSupabaseRelationError(courseError, ["video_courses"])) {
+    throw new Error(courseError.message);
+  }
+  if ((courseCount ?? 0) > 0) {
+    throw new Error("コースで使用中の助成金種別は削除できません。");
+  }
+
+  const { error } = await supabase
+    .from("subsidy_programs")
+    .delete()
+    .eq("id", id);
+
+  if (error) throw new Error(error.message);
 }

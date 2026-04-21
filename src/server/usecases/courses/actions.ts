@@ -14,6 +14,7 @@ import {
   updateVideoCourse,
   deactivateVideoCourse,
   activateVideoCourse,
+  deleteVideoCourse,
   isVideoCoursesFeatureAvailable,
 } from "@/server/repositories/video-courses";
 import { writeAuditLog } from "@/server/repositories/audit-log";
@@ -310,6 +311,46 @@ export async function activateCourseAction(
   await writeAuditLog({
     userId: currentUser.id,
     action: "course_activate",
+    targetType: "video_course",
+    targetId: normalizedId,
+  });
+
+  revalidatePath(COURSES_PATH);
+  revalidatePath(SETTINGS_PATH);
+  return { success: true };
+}
+
+export async function deleteCourseAction(
+  _prevState: CourseActionResult | null,
+  formData: FormData
+): Promise<CourseActionResult> {
+  const currentUser = await getCurrentUserProfile();
+  if (!currentUser) return { error: "認証が必要です。" };
+
+  requirePermission(currentUser.roleCode, PERMISSIONS.USER_MANAGE);
+
+  if (!(await isVideoCoursesFeatureAvailable())) {
+    return { error: getOptionalFeatureUnavailableMessage("コースマスタ") };
+  }
+
+  const id = formData.get("id");
+  if (typeof id !== "string" || !id.trim()) {
+    return { error: "コースIDが不正です。" };
+  }
+
+  const normalizedId = id.trim();
+
+  try {
+    await deleteVideoCourse(normalizedId);
+  } catch (error) {
+    return {
+      error: getCourseActionErrorMessage(error, "コースの削除に失敗しました。"),
+    };
+  }
+
+  await writeAuditLog({
+    userId: currentUser.id,
+    action: "course_delete",
     targetType: "video_course",
     targetId: normalizedId,
   });

@@ -5,8 +5,10 @@ import { getCurrentUserProfile } from "@/lib/auth/session";
 import { can, PERMISSIONS } from "@/lib/rbac";
 import { ParticipantCsvImport, CasePageShell } from "@/components/domain";
 import { LEARNER_STATUS_LABELS, EMPLOYMENT_TYPE_LABELS } from "@/lib/constants/case-status";
+import { FormActionButton } from "@/components/ui";
 import { AddParticipantForm } from "./AddParticipantForm";
 import { IssueAccountSheetButton } from "./IssueAccountSheetButton";
+import { deleteParticipantAction } from "@/server/usecases/participants/actions";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -68,6 +70,11 @@ export default async function ParticipantsPage({
                         {h}
                       </th>
                     ))}
+                    {canEdit && (
+                      <th className="px-3 py-2.5 text-left text-xs font-semibold text-[var(--color-text-sub)]">
+                        操作
+                      </th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--color-border)]">
@@ -108,6 +115,17 @@ export default async function ParticipantsPage({
                           {LEARNER_STATUS_LABELS[p.learnerStatus] ?? p.learnerStatus}
                         </span>
                       </td>
+                      {canEdit && (
+                        <td className="px-3 py-2.5">
+                          <FormActionButton
+                            action={deleteParticipantAction}
+                            fields={{ caseId: id, participantId: p.id }}
+                            label="削除"
+                            pendingLabel="削除中..."
+                            confirmMessage={`受講者「${p.name}」を削除しますか？`}
+                          />
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -123,10 +141,21 @@ export default async function ParticipantsPage({
               </summary>
               <ul className="divide-y divide-[var(--color-border)]">
                 {excluded.map((p) => (
-                  <li key={p.id} className="px-4 py-2.5 text-sm text-[var(--color-text-muted)]">
-                    <span className="line-through">{p.name}</span>
-                    {p.excludedReason && (
-                      <span className="ml-2 text-xs">（{p.excludedReason}）</span>
+                  <li key={p.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm text-[var(--color-text-muted)]">
+                    <div>
+                      <span className="line-through">{p.name}</span>
+                      {p.excludedReason && (
+                        <span className="ml-2 text-xs">（{p.excludedReason}）</span>
+                      )}
+                    </div>
+                    {canEdit && (
+                      <FormActionButton
+                        action={deleteParticipantAction}
+                        fields={{ caseId: id, participantId: p.id }}
+                        label="削除"
+                        pendingLabel="削除中..."
+                        confirmMessage={`対象外受講者「${p.name}」を削除しますか？`}
+                      />
                     )}
                   </li>
                 ))}

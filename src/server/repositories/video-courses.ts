@@ -414,6 +414,45 @@ export async function activateVideoCourse(id: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+export async function deleteVideoCourse(id: string): Promise<void> {
+  const supabase = createAdminClient();
+
+  const { count: caseCount, error: caseError } = await supabase
+    .from("cases")
+    .select("id", { count: "exact", head: true })
+    .eq("video_course_id", id);
+
+  if (caseError) throw new Error(caseError.message);
+  if ((caseCount ?? 0) > 0) {
+    throw new Error("案件で使用中のコースは削除できません。");
+  }
+
+  const { count: linkedCount, error: linkedError } = await supabase
+    .from("case_video_courses")
+    .select("case_id", { count: "exact", head: true })
+    .eq("video_course_id", id);
+
+  if (
+    linkedError &&
+    !isMissingSupabaseRelationError(linkedError, ["case_video_courses"])
+  ) {
+    throw new Error(linkedError.message);
+  }
+  if ((linkedCount ?? 0) > 0) {
+    throw new Error("案件履歴に紐付くコースは削除できません。");
+  }
+
+  const { error } = await supabase
+    .from("video_courses")
+    .delete()
+    .eq("id", id);
+
+  if (error && isMissingSupabaseRelationError(error, ["video_courses"])) {
+    throw new Error(getOptionalFeatureUnavailableMessage("コースマスタ"));
+  }
+  if (error) throw new Error(error.message);
+}
+
 // ---------------------------------------------------------------
 // 案件×コース 中間テーブル
 // ---------------------------------------------------------------

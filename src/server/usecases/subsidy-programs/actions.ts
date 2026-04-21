@@ -3,7 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { getCurrentUserProfile } from "@/lib/auth/session";
 import { requirePermission, PERMISSIONS } from "@/lib/rbac";
-import { createSubsidyProgram } from "@/server/repositories/subsidy-programs";
+import {
+  createSubsidyProgram,
+  deleteSubsidyProgram,
+} from "@/server/repositories/subsidy-programs";
 import { writeAuditLog } from "@/server/repositories/audit-log";
 
 export interface SubsidyProgramActionResult {
@@ -68,6 +71,43 @@ export async function createSubsidyProgramAction(
     targetType: "subsidy_program",
     targetId: subsidyProgramId,
     metadata: { name, code: generatedCode, abbreviation },
+  });
+
+  revalidatePath(SETTINGS_PATH);
+  revalidatePath(COURSES_PATH);
+  return { success: true };
+}
+
+export async function deleteSubsidyProgramAction(
+  _prevState: SubsidyProgramActionResult | null,
+  formData: FormData
+): Promise<SubsidyProgramActionResult> {
+  const currentUser = await getCurrentUserProfile();
+  if (!currentUser) return { error: "認証が必要です。" };
+
+  requirePermission(currentUser.roleCode, PERMISSIONS.USER_MANAGE);
+
+  const id = String(formData.get("id") ?? "").trim();
+  if (!id) {
+    return { error: "助成金種別IDが不正です。" };
+  }
+
+  try {
+    await deleteSubsidyProgram(id);
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "助成金種別の削除に失敗しました。",
+    };
+  }
+
+  await writeAuditLog({
+    userId: currentUser.id,
+    action: "subsidy_program_delete",
+    targetType: "subsidy_program",
+    targetId: id,
   });
 
   revalidatePath(SETTINGS_PATH);

@@ -2,7 +2,8 @@ import Link from "next/link";
 import { listOrganizations } from "@/server/repositories/organizations";
 import { getCurrentUserProfile } from "@/lib/auth/session";
 import { can, PERMISSIONS } from "@/lib/rbac";
-import { ButtonLink } from "@/components/ui";
+import { ButtonLink, FormActionButton } from "@/components/ui";
+import { deleteOrganizationAction } from "@/server/usecases/organizations/actions";
 
 export const metadata = { title: "企業一覧 | RGDシステム" };
 
@@ -52,6 +53,11 @@ export default async function OrganizationsPage() {
                   住所
                 </th>
                 <th className="w-8" />
+                {canEdit && (
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-[var(--color-text-sub)]">
+                    操作
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--color-border)]">
@@ -88,6 +94,17 @@ export default async function OrganizationsPage() {
                       詳細 →
                     </Link>
                   </td>
+                  {canEdit && (
+                    <td className="px-4 py-3">
+                      <FormActionButton
+                        action={deleteOrganizationAction}
+                        fields={{ organizationId: org.id }}
+                        label="削除"
+                        pendingLabel="削除中..."
+                        confirmMessage={`企業「${org.legalName}」を削除しますか？`}
+                      />
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

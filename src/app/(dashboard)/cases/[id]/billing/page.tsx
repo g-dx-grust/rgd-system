@@ -18,8 +18,12 @@ import { createClient } from "@/lib/supabase/server";
 import { isMissingStorageBucketError } from "@/lib/supabase/errors";
 import { BillingFormClient } from "./BillingFormClient";
 import { InvoiceUploadClient } from "./InvoiceUploadClient";
-import { updateInvoiceStatusAction } from "@/server/usecases/invoices/actions";
+import {
+  updateInvoiceStatusAction,
+  deleteInvoiceAction,
+} from "@/server/usecases/invoices/actions";
 import { CasePageShell } from "@/components/domain";
+import { FormActionButton } from "@/components/ui";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -310,7 +314,18 @@ function InvoiceStatusActions({
   }
 
   if (nextActions.length === 0)
-    return <span className="text-xs text-[var(--color-text-muted)]">—</span>;
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs text-[var(--color-text-muted)]">—</span>
+        <FormActionButton
+          action={deleteInvoiceAction}
+          fields={{ caseId, invoiceId: invoice.id }}
+          label="削除"
+          pendingLabel="削除中..."
+          confirmMessage={`請求「${invoice.invoiceNumber}」を削除しますか？`}
+        />
+      </div>
+    );
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -334,6 +349,13 @@ function InvoiceStatusActions({
           </button>
         </form>
       ))}
+      <FormActionButton
+        action={deleteInvoiceAction}
+        fields={{ caseId, invoiceId: invoice.id }}
+        label="削除"
+        pendingLabel="削除中..."
+        confirmMessage={`請求「${invoice.invoiceNumber}」を削除しますか？`}
+      />
     </div>
   );
 }
