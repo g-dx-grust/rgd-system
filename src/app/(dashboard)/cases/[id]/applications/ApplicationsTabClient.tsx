@@ -14,6 +14,7 @@ import { PackageFileSelector } from "@/components/domain/applications/PackageFil
 import type { SelectableDocument } from "@/components/domain/applications/PackageFileSelector";
 import type { CreateApplicationPackageItemInput } from "@/types/application-packages";
 import type { ApplicationPackage } from "@/types/application-packages";
+import type { SpecialistUserOption } from "@/server/repositories/users";
 import {
   createPreApplicationPackageAction,
   shareApplicationPackageAction,
@@ -31,6 +32,7 @@ interface Props {
   canStatusChange: boolean;
   documents:     SelectableDocument[];
   packages:      ApplicationPackage[];
+  specialists:   SpecialistUserOption[];
 }
 
 export function ApplicationsTabClient({
@@ -41,15 +43,25 @@ export function ApplicationsTabClient({
   canStatusChange,
   documents,
   packages: initialPackages,
+  specialists,
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError]         = useState<string | null>(null);
   const [success, setSuccess]     = useState<string | null>(null);
   const [sharedTo, setSharedTo]   = useState("");
+  const [specialistUserId, setSpecialistUserId] = useState("");
   const [note, setNote]           = useState("");
   const [selectedItems, setSelectedItems] = useState<CreateApplicationPackageItemInput[]>([]);
   const [packages]                = useState<ApplicationPackage[]>(initialPackages);
   const [draftPackageId, setDraftPackageId] = useState<string | null>(null);
+
+  const selectedSpecialist =
+    specialists.find((specialist) => specialist.id === specialistUserId) ?? null;
+  const computedSharedTo =
+    sharedTo.trim() ||
+    (selectedSpecialist
+      ? `${selectedSpecialist.displayName}${selectedSpecialist.email ? ` / ${selectedSpecialist.email}` : ""}`
+      : "");
 
   function showResult(err?: string, msg?: string) {
     setError(err ?? null);
@@ -67,7 +79,7 @@ export function ApplicationsTabClient({
     startTransition(async () => {
       const result = await createPreApplicationPackageAction({
         caseId,
-        sharedTo: sharedTo || undefined,
+        sharedTo: computedSharedTo || undefined,
         note:     note     || undefined,
         items:    selectedItems,
       });
@@ -84,12 +96,17 @@ export function ApplicationsTabClient({
   // パッケージ共有（pre_application_shared 遷移）
   // ------------------------------------------------------------
   function handleShare(packageId: string) {
-    if (!sharedTo.trim()) {
+    if (!computedSharedTo.trim()) {
       setError("共有先を入力してください。");
       return;
     }
     startTransition(async () => {
-      const result = await shareApplicationPackageAction({ caseId, packageId, sharedTo });
+      const result = await shareApplicationPackageAction({
+        caseId,
+        packageId,
+        sharedTo: computedSharedTo,
+        specialistUserId: specialistUserId || undefined,
+      });
       if (result.error) {
         showResult(result.error);
       } else {
@@ -160,6 +177,29 @@ export function ApplicationsTabClient({
             </p>
           </div>
           <div className="p-4 space-y-4">
+            {/* 社労士アカウント */}
+            <div>
+              <label className="block text-sm font-medium text-[var(--color-text)] mb-1">
+                社労士アカウント
+              </label>
+              <select
+                value={specialistUserId}
+                onChange={(e) => setSpecialistUserId(e.target.value)}
+                className="w-full h-9 px-3 text-sm border border-[var(--color-border)] rounded-[var(--radius-sm)] bg-white focus:outline-none focus:border-[var(--color-accent)]"
+              >
+                <option value="">（未選択 / ポータル連携しない）</option>
+                {specialists.map((specialist) => (
+                  <option key={specialist.id} value={specialist.id}>
+                    {specialist.displayName}
+                    {specialist.email ? ` / ${specialist.email}` : ""}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+                社労士ポータルに案件を表示するには、ここで社労士アカウントを選択してください。
+              </p>
+            </div>
+
             {/* 共有先 */}
             <div>
               <label className="block text-sm font-medium text-[var(--color-text)] mb-1">
@@ -235,9 +275,9 @@ export function ApplicationsTabClient({
       {draftPackageId && canEdit && (
         <div className="flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--color-border)] px-4 py-3">
           <div>
-            <p className="text-sm font-medium text-[var(--color-text)]">パッケージ作成済み</p>
-            <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-              共有先に送付後、「共有済みにする」を押してください。
+              <p className="text-sm font-medium text-[var(--color-text)]">パッケージ作成済み</p>
+              <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+              共有先に送付後、「共有済みにする」を押してください。社労士アカウントを選ぶと社労士ポータルにも表示されます。
             </p>
           </div>
           <button

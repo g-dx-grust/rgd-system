@@ -38,6 +38,12 @@ export interface RoleOption {
   sortOrder: number;
 }
 
+export interface SpecialistUserOption {
+  id: string;
+  displayName: string;
+  email: string;
+}
+
 /**
  * 全ユーザー一覧を取得（論理削除除く。無効化ユーザーも含む）
  * Admin のみ呼び出し可。呼び出し元で権限チェックを行うこと。
@@ -165,6 +171,35 @@ export async function listUsers(): Promise<UserRow[]> {
   return [...profileUserMap.values()].sort((left, right) => {
     return new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
   });
+}
+
+/**
+ * 有効な社労士アカウント一覧を取得する。
+ * 申請タブ/終了申請タブの共有先選択で使用する。
+ */
+export async function listExternalSpecialists(): Promise<SpecialistUserOption[]> {
+  const admin = createAdminClient();
+
+  const { data, error } = await admin
+    .from("user_profiles")
+    .select(`
+      id,
+      display_name,
+      email,
+      roles!inner ( code )
+    `)
+    .eq("roles.code", "external_specialist")
+    .eq("is_active", true)
+    .is("deleted_at", null)
+    .order("display_name", { ascending: true });
+
+  if (error) throw new Error(error.message);
+
+  return (data ?? []).map((row) => ({
+    id: String(row["id"]),
+    displayName: String(row["display_name"]),
+    email: String(row["email"]),
+  }));
 }
 
 async function fetchOperatingCompanyNameMap(

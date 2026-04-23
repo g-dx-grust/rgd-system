@@ -9,6 +9,7 @@
 
 import { redirect } from "next/navigation";
 import { getCurrentUserProfile } from "@/lib/auth/session";
+import { getHomePathForRole, SPECIALIST_HOME_PATH } from "@/lib/auth/access-routes";
 import { SpecialistLoginForm } from "./SpecialistLoginForm";
 
 export const metadata = {
@@ -18,7 +19,11 @@ export const metadata = {
 export default async function SpecialistLoginPage() {
   const profile = await getCurrentUserProfile();
   if (profile?.roleCode === "external_specialist" && profile.isActive) {
-    redirect("/external/specialist/cases");
+    redirect(SPECIALIST_HOME_PATH);
+  }
+
+  if (profile && profile.roleCode !== "external_specialist") {
+    redirect(getHomePathForRole(profile.roleCode));
   }
 
   return (

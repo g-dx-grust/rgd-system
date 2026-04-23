@@ -29,6 +29,7 @@ import { checkFinalReadiness } from "@/server/services/final-application";
 import { updateCaseStatus } from "@/server/repositories/cases";
 import { createApplicationPackage } from "@/server/repositories/application-packages";
 import { writeAuditLog } from "@/server/repositories/audit-log";
+import { replaceCaseSpecialistAssignment } from "@/server/repositories/specialist";
 import type {
   SurveyStatus,
   CreateSurveyInput,
@@ -371,6 +372,7 @@ export async function recordFinalSpecialistLinkageAction(params: {
   packageId?: string;
   linkedTo?:  string;
   note?:      string;
+  specialistUserId?: string;
 }): Promise<ActionResult> {
   const user = await getAuthUser();
   if (!user) return { error: "認証が必要です" };
@@ -391,6 +393,15 @@ export async function recordFinalSpecialistLinkageAction(params: {
       user.id
     );
 
+    if (params.specialistUserId) {
+      await replaceCaseSpecialistAssignment({
+        caseId: params.caseId,
+        specialistUserId: params.specialistUserId,
+        sharedBy: user.id,
+        note: params.linkedTo ?? params.note ?? null,
+      });
+    }
+
     // 案件ステータスを final_application_shared へ進める
     await updateCaseStatus(params.caseId, "final_application_shared");
 
@@ -404,6 +415,7 @@ export async function recordFinalSpecialistLinkageAction(params: {
         toStatus:  "final_application_shared",
         linkedTo:  params.linkedTo,
         packageId: params.packageId,
+        specialistUserId: params.specialistUserId ?? null,
       },
     });
 

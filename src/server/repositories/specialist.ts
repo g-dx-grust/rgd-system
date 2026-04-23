@@ -65,6 +65,45 @@ export interface SpecialistParticipantRow {
 }
 
 // ---------------------------------------------------------------
+// 案件と社労士の紐付け
+// ---------------------------------------------------------------
+
+export async function replaceCaseSpecialistAssignment(params: {
+  caseId: string;
+  specialistUserId: string;
+  sharedBy: string;
+  note?: string | null;
+}): Promise<void> {
+  const supabase = await createClient();
+  const now = new Date().toISOString();
+
+  const { error: deactivateError } = await supabase
+    .from("specialist_cases")
+    .update({ is_active: false })
+    .eq("case_id", params.caseId)
+    .neq("specialist_user_id", params.specialistUserId)
+    .eq("is_active", true);
+
+  if (deactivateError) throw new Error(deactivateError.message);
+
+  const { error: upsertError } = await supabase
+    .from("specialist_cases")
+    .upsert(
+      {
+        case_id:            params.caseId,
+        specialist_user_id: params.specialistUserId,
+        shared_by:          params.sharedBy,
+        shared_at:          now,
+        is_active:          true,
+        note:               params.note ?? null,
+      },
+      { onConflict: "case_id,specialist_user_id" }
+    );
+
+  if (upsertError) throw new Error(upsertError.message);
+}
+
+// ---------------------------------------------------------------
 // 担当案件一覧
 // ---------------------------------------------------------------
 

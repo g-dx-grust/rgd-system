@@ -21,6 +21,7 @@ import type {
   FinalReadinessResult,
 } from "@/types/surveys";
 import type { ApplicationPackage } from "@/types/application-packages";
+import type { SpecialistUserOption } from "@/server/repositories/users";
 import {
   updateSurveyStatusAction,
   deleteSurveyAction,
@@ -39,6 +40,7 @@ interface Props {
   finalPackages: ApplicationPackage[];
   canEdit:       boolean;
   canStatusChange: boolean;
+  specialists:   SpecialistUserOption[];
 }
 
 // ============================================================
@@ -55,6 +57,7 @@ export function CompletionTabClient({
   finalPackages,
   canEdit,
   canStatusChange,
+  specialists,
 }: Props) {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -100,6 +103,7 @@ export function CompletionTabClient({
         packages={finalPackages}
         readiness={readiness}
         canEdit={canEdit}
+        specialists={specialists}
         onNotify={notify}
       />
 
@@ -403,6 +407,7 @@ function SpecialistLinkageSection({
   packages,
   readiness,
   canEdit,
+  specialists,
   onNotify,
 }: {
   caseId:    string;
@@ -410,12 +415,22 @@ function SpecialistLinkageSection({
   packages:  ApplicationPackage[];
   readiness: FinalReadinessResult;
   canEdit:   boolean;
+  specialists: SpecialistUserOption[];
   onNotify:  (msg: string, isError?: boolean) => void;
 }) {
   const [linkedTo, setLinkedTo] = useState("");
   const [note, setNote]         = useState("");
   const [packageId, setPackageId] = useState("");
+  const [specialistUserId, setSpecialistUserId] = useState("");
   const [pending, startTransition] = useTransition();
+
+  const selectedSpecialist =
+    specialists.find((specialist) => specialist.id === specialistUserId) ?? null;
+  const computedLinkedTo =
+    linkedTo.trim() ||
+    (selectedSpecialist
+      ? `${selectedSpecialist.displayName}${selectedSpecialist.email ? ` / ${selectedSpecialist.email}` : ""}`
+      : "");
 
   function handleRecord() {
     if (!readiness.ready) {
@@ -426,13 +441,14 @@ function SpecialistLinkageSection({
       const res = await recordFinalSpecialistLinkageAction({
         caseId,
         packageId: packageId || undefined,
-        linkedTo:  linkedTo || undefined,
+        linkedTo:  computedLinkedTo || undefined,
         note:      note || undefined,
+        specialistUserId: specialistUserId || undefined,
       });
       if (res.error) onNotify(res.error, true);
       else {
         onNotify("最終社労士連携を記録しました（ステータス: 最終申請連携済み）");
-        setLinkedTo(""); setNote(""); setPackageId("");
+        setLinkedTo(""); setNote(""); setPackageId(""); setSpecialistUserId("");
       }
     });
   }
@@ -464,6 +480,29 @@ function SpecialistLinkageSection({
       {canEdit && (
         <div className="p-4 space-y-3">
           <p className="text-sm font-medium text-[var(--color-text)]">連携を記録する</p>
+
+          <div>
+            <label className="text-xs text-[var(--color-text-muted)] mb-1 block">
+              社労士アカウント
+            </label>
+            <select
+              className="w-full text-sm border border-[var(--color-border)] rounded-[var(--radius-sm)] px-3 py-2 bg-white text-[var(--color-text)]"
+              value={specialistUserId}
+              onChange={(e) => setSpecialistUserId(e.target.value)}
+              disabled={pending}
+            >
+              <option value="">（未選択 / 履歴のみ記録）</option>
+              {specialists.map((specialist) => (
+                <option key={specialist.id} value={specialist.id}>
+                  {specialist.displayName}
+                  {specialist.email ? ` / ${specialist.email}` : ""}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+              ここで選択すると、対象社労士の専用画面にも案件が表示されます。
+            </p>
+          </div>
 
           {packages.length > 0 && (
             <div>

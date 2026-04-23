@@ -10,12 +10,17 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import {
+  INTERNAL_LOGIN_PATH,
+  SPECIALIST_LOGIN_PATH,
+} from "@/lib/auth/access-routes";
 
 /** 認証不要なパス（公開ルート） */
 const PUBLIC_PATHS = [
   "/login",
   "/reset-password",
   "/reset-password/confirm",
+  "/external/specialist/login",
   "/upload",                    // 顧客向け書類提出画面（トークン認証で保護）
 ];
 
@@ -78,12 +83,17 @@ export async function proxy(request: NextRequest) {
 
   // 未認証 → 保護ルートならログインへ
   if (!isPublic && !isAuthenticated) {
-    const loginUrl = new URL("/login", request.url);
+    const loginPath = pathname.startsWith("/external/specialist")
+      ? SPECIALIST_LOGIN_PATH
+      : INTERNAL_LOGIN_PATH;
+    const loginUrl = new URL(loginPath, request.url);
     loginUrl.searchParams.set("next", pathname);
     return NextResponse.redirect(loginUrl);
   }
 
-  // 認証済み → ログイン画面にアクセスしたらダッシュボードへ
+  // 認証済み → 内部ログイン画面にアクセスしたらダッシュボードへ
+  // 社労士ロールの最終遷移先は /dashboard レイアウト側で振り分ける
+  // （proxy では重いプロフィール参照を避けるためロール判定しない）
   // ただし reason パラメータがある場合はループ防止のためリダイレクトしない
   const reason = request.nextUrl.searchParams.get("reason");
   if (isPublic && isAuthenticated && pathname === "/login" && !reason) {

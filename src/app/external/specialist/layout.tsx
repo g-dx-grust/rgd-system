@@ -9,13 +9,22 @@
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { getCurrentUserProfile } from "@/lib/auth/session";
+import { getHomePathForRole, SPECIALIST_LOGIN_PATH } from "@/lib/auth/access-routes";
 import { SpecialistLogoutButton } from "./SpecialistLogoutButton";
 
 export default async function SpecialistLayout({ children }: { children: ReactNode }) {
   const profile = await getCurrentUserProfile();
 
-  if (!profile || profile.roleCode !== "external_specialist" || !profile.isActive) {
-    redirect("/external/specialist/login");
+  if (!profile) {
+    redirect(SPECIALIST_LOGIN_PATH);
+  }
+
+  if (profile.roleCode !== "external_specialist") {
+    redirect(getHomePathForRole(profile.roleCode));
+  }
+
+  if (!profile.isActive) {
+    redirect(SPECIALIST_LOGIN_PATH);
   }
 
   return (

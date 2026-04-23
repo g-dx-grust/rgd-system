@@ -3,6 +3,7 @@
  */
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export interface OrganizationRow {
   id: string;
@@ -168,7 +169,10 @@ export async function updateOrganization(id: string, input: UpdateOrganizationIn
 // 企業削除（論理削除）
 // ---------------------------------------------------------------
 export async function deleteOrganization(id: string): Promise<void> {
-  const supabase = await createClient();
+  // Server Action 側で権限チェック済みのため、
+  // 環境差で organizations / organization_contacts の UPDATE RLS が不足していても
+  // 企業削除が失敗しないよう service role を使う。
+  const supabase = createAdminClient();
 
   const { count, error: caseCountError } = await supabase
     .from("cases")

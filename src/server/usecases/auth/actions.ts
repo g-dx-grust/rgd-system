@@ -11,6 +11,8 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { writeAuditLog } from "@/server/repositories/audit-log";
 import { getAuthUser } from "@/lib/auth/session";
+import { getHomePathForRole } from "@/lib/auth/access-routes";
+import type { RoleCode } from "@/lib/rbac";
 
 // ---------------------------------------------------------------
 // 型定義
@@ -57,6 +59,25 @@ export async function loginAction(
     return { error: "メールアドレスまたはパスワードが正しくありません。" };
   }
 
+  const { data: profileData } = await supabase
+    .from("user_profiles")
+    .select("is_active, roles ( code )")
+    .eq("id", data.user.id)
+    .single();
+
+  const roleCode = (() => {
+    const role = profileData?.roles;
+    if (!role) return null;
+    return Array.isArray(role)
+      ? ((role[0] as { code?: RoleCode } | undefined)?.code ?? null)
+      : ((role as { code?: RoleCode } | undefined)?.code ?? null);
+  })();
+
+  if (profileData && !profileData.is_active) {
+    await supabase.auth.signOut();
+    return { error: "アカウントが無効化されています。管理者にお問い合わせください。" };
+  }
+
   // ログイン成功を監査ログに記録
   await writeAuditLog({
     userId: data.user.id,
@@ -64,7 +85,7 @@ export async function loginAction(
     metadata: { email: data.user.email },
   });
 
-  redirect("/dashboard");
+  redirect(getHomePathForRole(roleCode));
 }
 
 // ---------------------------------------------------------------

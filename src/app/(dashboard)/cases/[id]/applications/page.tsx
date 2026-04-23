@@ -19,6 +19,7 @@ import { ApplicationsTabClient } from "./ApplicationsTabClient";
 import type { SelectableDocument } from "@/components/domain/applications/PackageFileSelector";
 import { createClient } from "@/lib/supabase/server";
 import { CasePageShell } from "@/components/domain";
+import { listExternalSpecialists } from "@/server/repositories/users";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -43,10 +44,11 @@ export default async function ApplicationsPage({
   const canEdit         = can(user?.roleCode, PERMISSIONS.CASE_EDIT);
   const canStatusChange = can(user?.roleCode, PERMISSIONS.CASE_STATUS_CHANGE);
 
-  const [readiness, packages, approvedDocs] = await Promise.all([
+  const [readiness, packages, approvedDocs, specialists] = await Promise.all([
     checkPreApplicationReadiness(id),
     listApplicationPackages(id),
     fetchApprovedDocuments(id),
+    canEdit ? listExternalSpecialists() : Promise.resolve([]),
   ]);
 
   return (
@@ -73,6 +75,7 @@ export default async function ApplicationsPage({
         canStatusChange={canStatusChange}
         documents={approvedDocs}
         packages={packages}
+        specialists={specialists}
       />
     </CasePageShell>
   );

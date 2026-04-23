@@ -9,6 +9,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUserProfile } from "@/lib/auth/session";
+import { SPECIALIST_HOME_PATH, SPECIALIST_LOGIN_PATH } from "@/lib/auth/access-routes";
 import { writeAuditLog } from "@/server/repositories/audit-log";
 import {
   recordSpecialistSubmission,
@@ -89,7 +90,7 @@ export async function specialistLoginAction(
     metadata: { email: data.user.email, via: "specialist_portal" },
   });
 
-  redirect("/external/specialist/cases");
+  redirect(SPECIALIST_HOME_PATH);
 }
 
 // ---------------------------------------------------------------
@@ -109,7 +110,7 @@ export async function specialistLogoutAction(): Promise<void> {
   }
 
   await supabase.auth.signOut();
-  redirect("/external/specialist/login");
+  redirect(SPECIALIST_LOGIN_PATH);
 }
 
 // ---------------------------------------------------------------

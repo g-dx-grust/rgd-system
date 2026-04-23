@@ -21,6 +21,7 @@ import { checkFinalReadiness } from "@/server/services/final-application";
 import { listApplicationPackages } from "@/server/repositories/application-packages";
 import { CompletionTabClient } from "./CompletionTabClient";
 import { CasePageShell } from "@/components/domain";
+import { listExternalSpecialists } from "@/server/repositories/users";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -45,12 +46,13 @@ export default async function CompletionPage({
   const canEdit         = can(profile.roleCode, PERMISSIONS.CASE_EDIT);
   const canStatusChange = can(profile.roleCode, PERMISSIONS.CASE_STATUS_CHANGE);
 
-  const [surveys, reviewItems, linkages, readiness, allPackages] = await Promise.all([
+  const [surveys, reviewItems, linkages, readiness, allPackages, specialists] = await Promise.all([
     listSurveys(id),
     listFinalReviewItems(id),
     listFinalSpecialistLinkages(id),
     checkFinalReadiness(id),
     listApplicationPackages(id),
+    canEdit ? listExternalSpecialists() : Promise.resolve([]),
   ]);
 
   const finalPackages = allPackages.filter((p) => p.packageType === "final");
@@ -78,6 +80,7 @@ export default async function CompletionPage({
         finalPackages={finalPackages}
         canEdit={canEdit}
         canStatusChange={canStatusChange}
+        specialists={specialists}
       />
     </CasePageShell>
   );

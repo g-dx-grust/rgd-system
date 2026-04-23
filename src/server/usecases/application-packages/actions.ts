@@ -16,6 +16,7 @@ import {
 } from "@/server/repositories/application-packages";
 import { updateCaseStatus } from "@/server/repositories/cases";
 import { writeAuditLog } from "@/server/repositories/audit-log";
+import { replaceCaseSpecialistAssignment } from "@/server/repositories/specialist";
 import {
   checkPreApplicationReadiness,
   hasReturnedDocuments,
@@ -109,6 +110,7 @@ export async function shareApplicationPackageAction(params: {
   caseId:     string;
   packageId:  string;
   sharedTo:   string;
+  specialistUserId?: string;
 }): Promise<ActionResult> {
   const user = await getAuthUser();
   if (!user) return { error: "認証が必要です" };
@@ -120,6 +122,15 @@ export async function shareApplicationPackageAction(params: {
 
   try {
     await updatePackageStatus(params.packageId, "shared", params.sharedTo);
+
+    if (params.specialistUserId) {
+      await replaceCaseSpecialistAssignment({
+        caseId: params.caseId,
+        specialistUserId: params.specialistUserId,
+        sharedBy: user.id,
+        note: params.sharedTo,
+      });
+    }
 
     // 案件ステータスを pre_application_shared に進める
     await updateCaseStatus(params.caseId, "pre_application_shared");
@@ -133,6 +144,7 @@ export async function shareApplicationPackageAction(params: {
         toStatus: "pre_application_shared",
         packageId: params.packageId,
         sharedTo:  params.sharedTo,
+        specialistUserId: params.specialistUserId ?? null,
       },
     });
 
