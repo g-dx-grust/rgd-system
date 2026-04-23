@@ -53,6 +53,9 @@ const MIGRATIONS = [
   "20260419000011_specialist_update_rls.sql",
   "20260420000012_cases_select_company_scope.sql",
   "20260420000013_subsidy_programs_admin_write.sql",
+  "20260420000014_repair_video_courses_feature.sql",
+  "20260420000015_repair_operating_companies_feature.sql",
+  "20260423000016_repair_user_profiles_trigger.sql",
 ];
 
 async function runQuery(sql) {

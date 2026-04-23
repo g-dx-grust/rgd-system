@@ -4,6 +4,10 @@
 
 import { createClient } from "@/lib/supabase/server";
 import {
+  isOperatingCompanyUuid,
+  normalizeOperatingCompanyCode,
+} from "@/server/repositories/operating-companies";
+import {
   isMissingSupabaseColumnError,
   isMissingSupabaseRelationError,
 } from "@/lib/supabase/errors";
@@ -419,24 +423,61 @@ async function fetchOperatingCompanyNameMap(
 ): Promise<Map<string, string>> {
   if (operatingCompanyIds.length === 0) return new Map();
 
-  const { data, error } = await supabase
-    .from("operating_companies")
-    .select("id, name")
-    .in("id", operatingCompanyIds);
-
-  if (error) {
-    if (isMissingSupabaseRelationError(error, ["operating_companies"])) {
-      return new Map();
-    }
-    throw new Error(error.message);
-  }
+  const uniqueKeys = [...new Set(
+    operatingCompanyIds.map((value) => value.trim()).filter((value) => value.length > 0)
+  )];
+  const uuidKeys = uniqueKeys.filter(isOperatingCompanyUuid);
+  const codeKeys = uniqueKeys
+    .filter((value) => !isOperatingCompanyUuid(value))
+    .map(normalizeOperatingCompanyCode);
 
   const map = new Map<string, string>();
-  for (const row of data ?? []) {
-    if (row["id"] && row["name"]) {
-      map.set(String(row["id"]), String(row["name"]));
+  const appendRows = (rows: Array<Record<string, unknown>> | null) => {
+    for (const row of rows ?? []) {
+      const name = row["name"];
+      if (!name) continue;
+
+      if (row["id"]) {
+        map.set(String(row["id"]), String(name));
+      }
+      if (row["code"]) {
+        map.set(String(row["code"]), String(name));
+      }
     }
+  };
+
+  if (uuidKeys.length > 0) {
+    const { data, error } = await supabase
+      .from("operating_companies")
+      .select("id, code, name")
+      .in("id", uuidKeys);
+
+    if (error) {
+      if (isMissingSupabaseRelationError(error, ["operating_companies"])) {
+        return new Map();
+      }
+      throw new Error(error.message);
+    }
+
+    appendRows((data as Array<Record<string, unknown>> | null) ?? null);
   }
+
+  if (codeKeys.length > 0) {
+    const { data, error } = await supabase
+      .from("operating_companies")
+      .select("id, code, name")
+      .in("code", codeKeys);
+
+    if (error) {
+      if (isMissingSupabaseRelationError(error, ["operating_companies"])) {
+        return new Map();
+      }
+      throw new Error(error.message);
+    }
+
+    appendRows((data as Array<Record<string, unknown>> | null) ?? null);
+  }
+
   return map;
 }
 

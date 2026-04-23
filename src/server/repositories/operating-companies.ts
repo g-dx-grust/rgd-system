@@ -26,6 +26,17 @@ const DEFAULT_OPERATING_COMPANIES = [
   },
 ] as const;
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function isOperatingCompanyUuid(value: string): boolean {
+  return UUID_PATTERN.test(value.trim());
+}
+
+export function normalizeOperatingCompanyCode(value: string): string {
+  return value.trim().toUpperCase();
+}
+
 export async function ensureDefaultOperatingCompanies(): Promise<void> {
   const admin = createAdminClient();
   const { error } = await admin
@@ -90,4 +101,31 @@ export async function listOperatingCompanies(): Promise<OperatingCompanyOption[]
   }));
 
   return rows.length > 0 ? rows : defaultOptions;
+}
+
+export async function resolveOperatingCompanyId(
+  rawValue: string
+): Promise<string | null> {
+  const normalizedValue = rawValue.trim();
+  if (!normalizedValue) return null;
+  if (isOperatingCompanyUuid(normalizedValue)) return normalizedValue;
+
+  const normalizedCode = normalizeOperatingCompanyCode(normalizedValue);
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("operating_companies")
+    .select("id")
+    .eq("code", normalizedCode)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (error) {
+    if (isMissingSupabaseRelationError(error, ["operating_companies"])) {
+      return null;
+    }
+    throw new Error(error.message);
+  }
+
+  return data?.id ? String(data.id) : null;
 }

@@ -9,6 +9,10 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { RoleCode } from "@/lib/rbac";
 import {
+  isOperatingCompanyUuid,
+  normalizeOperatingCompanyCode,
+} from "@/server/repositories/operating-companies";
+import {
   isMissingSupabaseColumnError,
   isMissingSupabaseRelationError,
 } from "@/lib/supabase/errors";
@@ -169,24 +173,61 @@ async function fetchOperatingCompanyNameMap(
   if (operatingCompanyIds.length === 0) return new Map();
 
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("operating_companies")
-    .select("id, name")
-    .in("id", [...new Set(operatingCompanyIds)]);
-
-  if (error) {
-    if (isMissingSupabaseRelationError(error, ["operating_companies"])) {
-      return new Map();
-    }
-    throw new Error(error.message);
-  }
+  const uniqueKeys = [...new Set(
+    operatingCompanyIds.map((value) => value.trim()).filter((value) => value.length > 0)
+  )];
+  const uuidKeys = uniqueKeys.filter(isOperatingCompanyUuid);
+  const codeKeys = uniqueKeys
+    .filter((value) => !isOperatingCompanyUuid(value))
+    .map(normalizeOperatingCompanyCode);
 
   const map = new Map<string, string>();
-  for (const row of data ?? []) {
-    if (row.id && row.name) {
-      map.set(String(row.id), String(row.name));
+  const appendRows = (rows: Array<Record<string, unknown>> | null) => {
+    for (const row of rows ?? []) {
+      const name = row["name"];
+      if (!name) continue;
+
+      if (row["id"]) {
+        map.set(String(row["id"]), String(name));
+      }
+      if (row["code"]) {
+        map.set(String(row["code"]), String(name));
+      }
     }
+  };
+
+  if (uuidKeys.length > 0) {
+    const { data, error } = await supabase
+      .from("operating_companies")
+      .select("id, code, name")
+      .in("id", uuidKeys);
+
+    if (error) {
+      if (isMissingSupabaseRelationError(error, ["operating_companies"])) {
+        return new Map();
+      }
+      throw new Error(error.message);
+    }
+
+    appendRows((data as Array<Record<string, unknown>> | null) ?? null);
   }
+
+  if (codeKeys.length > 0) {
+    const { data, error } = await supabase
+      .from("operating_companies")
+      .select("id, code, name")
+      .in("code", codeKeys);
+
+    if (error) {
+      if (isMissingSupabaseRelationError(error, ["operating_companies"])) {
+        return new Map();
+      }
+      throw new Error(error.message);
+    }
+
+    appendRows((data as Array<Record<string, unknown>> | null) ?? null);
+  }
+
   return map;
 }
 
@@ -299,7 +340,9 @@ export async function updateUserAccess(
     operatingCompanyId: string | null;
   }
 ): Promise<void> {
-  const supabase = await createClient();
+  // Admin-only write path. The action layer already enforces permissions,
+  // so we use the service role here to avoid coupling user management to RLS.
+  const supabase = createAdminClient();
   const authUser = await fetchAuthUserById(userId);
   if (!authUser) {
     throw new Error("対象ユーザーが認証ユーザー一覧に見つかりません。");
@@ -369,7 +412,9 @@ export async function createUserProfile(params: {
   roleId: string;
   operatingCompanyId: string | null;
 }): Promise<void> {
-  const supabase = await createClient();
+  // Admin-only write path. The action layer already enforces permissions,
+  // so we use the service role here to avoid coupling user management to RLS.
+  const supabase = createAdminClient();
 
   let { error } = await supabase.from("user_profiles").upsert(
     {
@@ -404,7 +449,7 @@ export async function createUserProfile(params: {
  * ユーザーを無効化（is_active = false のみ。deleted_at は設定しない = 再有効化可能）。
  */
 export async function deactivateUser(userId: string): Promise<void> {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
 
   const { error } = await supabase
     .from("user_profiles")
@@ -422,7 +467,7 @@ export async function deactivateUser(userId: string): Promise<void> {
  * ユーザーを有効化（停止解除）。
  */
 export async function activateUser(userId: string): Promise<void> {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
 
   const { error } = await supabase
     .from("user_profiles")

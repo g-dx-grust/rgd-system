@@ -10,6 +10,7 @@ import { revalidatePath } from "next/cache";
 import { getCurrentUserProfile } from "@/lib/auth/session";
 import { requirePermission, PERMISSIONS } from "@/lib/rbac";
 import { validateOperatingCompanyAssignment } from "@/lib/rbac/company-scope";
+import { resolveOperatingCompanyId } from "@/server/repositories/operating-companies";
 import {
   listRoles,
   listUsers,
@@ -30,6 +31,37 @@ export interface UserActionResult {
 const USERS_PATH = "/admin/users";
 const SETTINGS_PATH = "/settings";
 
+async function normalizeOperatingCompanyId(
+  rawOperatingCompanyId: string | null
+): Promise<{ value: string | null; error?: string }> {
+  if (!rawOperatingCompanyId) {
+    return { value: null };
+  }
+
+  try {
+    const resolvedOperatingCompanyId = await resolveOperatingCompanyId(
+      rawOperatingCompanyId
+    );
+    if (!resolvedOperatingCompanyId) {
+      return {
+        value: null,
+        error:
+          "運営会社の選択値を確認できませんでした。画面を再読み込みしてもう一度お試しください。",
+      };
+    }
+
+    return { value: resolvedOperatingCompanyId };
+  } catch (error) {
+    return {
+      value: null,
+      error:
+        error instanceof Error
+          ? error.message
+          : "運営会社の確認に失敗しました。",
+    };
+  }
+}
+
 /**
  * ユーザーを新規作成する（メール + 初期パスワード + ロール + 運営会社）
  */
@@ -46,7 +78,7 @@ export async function createUserAction(
   const password           = String(formData.get("password") ?? "").trim();
   const displayName        = String(formData.get("displayName") ?? "").trim();
   const roleCode           = String(formData.get("roleCode") ?? "").trim();
-  const operatingCompanyId = String(formData.get("operatingCompanyId") ?? "").trim() || null;
+  const operatingCompanyIdRaw = String(formData.get("operatingCompanyId") ?? "").trim() || null;
 
   if (!email)       return { error: "メールアドレスを入力してください。" };
   if (!password)    return { error: "初期パスワードを入力してください。" };
@@ -58,9 +90,16 @@ export async function createUserAction(
   const role  = roles.find((r) => r.code === roleCode);
   if (!role) return { error: "指定されたロールが見つかりません。" };
 
+  const normalizedOperatingCompany = await normalizeOperatingCompanyId(
+    operatingCompanyIdRaw
+  );
+  if (normalizedOperatingCompany.error) {
+    return { error: normalizedOperatingCompany.error };
+  }
+
   const companyValidation = validateOperatingCompanyAssignment(
     role.code,
-    operatingCompanyId
+    normalizedOperatingCompany.value
   );
   if (!companyValidation.ok) {
     return { error: companyValidation.error };
@@ -121,7 +160,7 @@ export async function changeUserRoleAction(
 
   const targetUserId = formData.get("userId");
   const newRoleCode  = formData.get("roleCode");
-  const operatingCompanyId = String(formData.get("operatingCompanyId") ?? "").trim() || null;
+  const operatingCompanyIdRaw = String(formData.get("operatingCompanyId") ?? "").trim() || null;
 
   if (
     typeof targetUserId !== "string" ||
@@ -136,9 +175,16 @@ export async function changeUserRoleAction(
   const newRole = roles.find((r) => r.code === newRoleCode);
   if (!newRole) return { error: "指定されたロールが見つかりません。" };
 
+  const normalizedOperatingCompany = await normalizeOperatingCompanyId(
+    operatingCompanyIdRaw
+  );
+  if (normalizedOperatingCompany.error) {
+    return { error: normalizedOperatingCompany.error };
+  }
+
   const companyValidation = validateOperatingCompanyAssignment(
     newRole.code,
-    operatingCompanyId
+    normalizedOperatingCompany.value
   );
   if (!companyValidation.ok) {
     return { error: companyValidation.error };

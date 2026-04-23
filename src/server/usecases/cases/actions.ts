@@ -13,10 +13,16 @@ import { syncCaseVideoCourses, getVideoCourse } from "@/server/repositories/vide
 import { getSubsidyProgram } from "@/server/repositories/subsidy-programs";
 import { writeAuditLog } from "@/server/repositories/audit-log";
 import { generateInitialTasks } from "@/server/services/cases";
+import { resolveOperatingCompanyId } from "@/server/repositories/operating-companies";
 import {
   expandChecklistItems,
   expandCompanyDocumentRequirements,
 } from "@/server/services/template-expansion";
+import {
+  getOptionalFeatureUnavailableMessage,
+  isMissingSupabaseColumnError,
+  isMissingSupabaseRelationError,
+} from "@/lib/supabase/errors";
 import type { CaseStatus } from "@/lib/constants/case-status";
 
 export interface ActionResult {
@@ -57,6 +63,30 @@ function validateProgramAndCourse(
   return null;
 }
 
+function getCaseActionErrorMessage(error: unknown, fallback: string): string {
+  if (
+    isMissingSupabaseColumnError(error, ["operating_company_id"]) ||
+    isMissingSupabaseRelationError(error, ["operating_companies"])
+  ) {
+    return getOptionalFeatureUnavailableMessage("運営会社");
+  }
+
+  const message = error instanceof Error ? error.message : fallback;
+  const normalizedMessage = message.toLowerCase();
+
+  if (
+    normalizedMessage.includes("generate_case_code") ||
+    normalizedMessage.includes("cases_assign_case_code") ||
+    normalizedMessage.includes("auth_can_access_company") ||
+    (normalizedMessage.includes("case_code") &&
+      normalizedMessage.includes("null value"))
+  ) {
+    return getOptionalFeatureUnavailableMessage("運営会社");
+  }
+
+  return message;
+}
+
 // ---------------------------------------------------------------
 // 案件作成
 // ---------------------------------------------------------------
@@ -70,7 +100,7 @@ export async function createCaseAction(
   requirePermission(user.roleCode, PERMISSIONS.CASE_CREATE);
 
   const organizationId      = String(formData.get("organizationId") ?? "").trim();
-  const operatingCompanyId  = String(formData.get("operatingCompanyId") ?? "").trim();
+  const operatingCompanyIdRaw = String(formData.get("operatingCompanyId") ?? "").trim();
   const subsidyProgramId    = String(formData.get("subsidyProgramId") ?? "").trim() || undefined;
   const videoCourseId       = String(formData.get("videoCourseId") ?? "").trim() || undefined;
   const contractDate        = String(formData.get("contractDate") ?? "").trim() || undefined;
@@ -81,10 +111,28 @@ export async function createCaseAction(
   const ownerUserId         = String(formData.get("ownerUserId") ?? "").trim() || undefined;
   const summary             = String(formData.get("summary") ?? "").trim() || undefined;
 
-  if (!organizationId)     return { error: "顧客企業を選択してください。" };
-  if (!operatingCompanyId) return { error: "運営会社を選択してください。" };
-  if (!subsidyProgramId)   return { error: "助成金種別を選択してください。" };
-  if (!videoCourseId)      return { error: "コースを選択してください。" };
+  if (!organizationId)        return { error: "顧客企業を選択してください。" };
+  if (!operatingCompanyIdRaw) return { error: "運営会社を選択してください。" };
+  if (!subsidyProgramId)      return { error: "助成金種別を選択してください。" };
+  if (!videoCourseId)         return { error: "コースを選択してください。" };
+
+  let operatingCompanyId: string;
+  try {
+    const resolvedOperatingCompanyId = await resolveOperatingCompanyId(
+      operatingCompanyIdRaw
+    );
+    if (!resolvedOperatingCompanyId) {
+      return {
+        error:
+          "運営会社の選択値を確認できませんでした。画面を再読み込みしてもう一度お試しください。",
+      };
+    }
+    operatingCompanyId = resolvedOperatingCompanyId;
+  } catch (error) {
+    return {
+      error: getCaseActionErrorMessage(error, "運営会社の確認に失敗しました。"),
+    };
+  }
 
   // 助成金種別・コース名を取得して案件名を合成
   const [program, course] = await Promise.all([
@@ -137,7 +185,9 @@ export async function createCaseAction(
 
   } catch (err) {
     console.error("[createCaseAction]", err);
-    return { error: err instanceof Error ? err.message : "案件の作成に失敗しました。" };
+    return {
+      error: getCaseActionErrorMessage(err, "案件の作成に失敗しました。"),
+    };
   }
 
   await writeAuditLog({
