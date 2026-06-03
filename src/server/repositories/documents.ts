@@ -496,6 +496,36 @@ export async function createViewSignedUrl(
   return data.signedUrl;
 }
 
+/** Storage からファイルのバイト列をダウンロードする（管理者クライアント使用） */
+export async function downloadDocumentBytes(storagePath: string): Promise<Uint8Array> {
+  const admin = createAdminClient();
+  const { data, error } = await admin.storage
+    .from("case-documents")
+    .download(storagePath);
+
+  if (error || !data) {
+    throw new Error(`document download failed: ${error?.message}`);
+  }
+  const buffer = await data.arrayBuffer();
+  return new Uint8Array(buffer);
+}
+
+/** Storage へバイト列をアップロードする（管理者クライアント使用） */
+export async function uploadDocumentBytes(
+  storagePath: string,
+  bytes: Uint8Array,
+  contentType: string
+): Promise<void> {
+  const admin = createAdminClient();
+  const { error } = await admin.storage
+    .from("case-documents")
+    .upload(storagePath, bytes, { contentType, upsert: false });
+
+  if (error) {
+    throw new Error(`document upload failed: ${error.message}`);
+  }
+}
+
 // ------------------------------------------------------------
 // upload_tokens
 // ------------------------------------------------------------

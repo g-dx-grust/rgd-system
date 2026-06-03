@@ -13,6 +13,7 @@ import { useState, useTransition, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { DocumentRequirementRow } from "@/components/domain/documents/DocumentRequirementRow";
+import { BulkUploadPanel } from "@/components/domain/documents/BulkUploadPanel";
 import { addRequirementAction, issueUploadTokenAction } from "@/server/usecases/documents/actions";
 import type {
   DocumentRequirement,
@@ -38,6 +39,7 @@ export function DocumentTabClient({
 }: Props) {
   const router = useRouter();
   const [showAddRequirement, setShowAddRequirement] = useState(false);
+  const [showBulkUpload, setShowBulkUpload]         = useState(false);
   const [selectedTypeId, setSelectedTypeId]         = useState("");
   const [dueDate, setDueDate]                       = useState("");
   const [addError, setAddError]                     = useState<string | null>(null);
@@ -115,13 +117,33 @@ export function DocumentTabClient({
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => setShowAddRequirement((v) => !v)}
+                onClick={() => { setShowBulkUpload((v) => !v); setShowAddRequirement(false); }}
+              >
+                {showBulkUpload ? "キャンセル" : "+ 一括アップロード"}
+              </Button>
+            )}
+            {canEdit && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => { setShowAddRequirement((v) => !v); setShowBulkUpload(false); }}
               >
                 {showAddRequirement ? "キャンセル" : "+ 書類要件を追加"}
               </Button>
             )}
           </div>
         </div>
+
+        {/* 一括アップロードパネル */}
+        {showBulkUpload && canEdit && (
+          <BulkUploadPanel
+            caseId={caseId}
+            organizationId={organizationId}
+            documentTypes={documentTypes}
+            onSuccess={refresh}
+            onCancel={() => setShowBulkUpload(false)}
+          />
+        )}
 
         {/* 書類要件追加フォーム */}
         {showAddRequirement && canEdit && (
@@ -192,6 +214,8 @@ export function DocumentTabClient({
                 caseId={caseId}
                 organizationId={organizationId}
                 canDelete={canDelete}
+                canEdit={canEdit}
+                documentTypes={documentTypes}
                 onRefresh={refresh}
               />
             ))

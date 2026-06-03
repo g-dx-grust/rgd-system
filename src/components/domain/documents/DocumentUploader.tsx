@@ -9,7 +9,7 @@
  */
 
 import { useCallback, useRef, useState } from "react";
-import { ALLOWED_MIME_TYPES, MAX_FILE_SIZE_BYTES } from "@/types/documents";
+import { uploadDocumentFile } from "@/lib/documents/upload-client";
 import type { DocumentType } from "@/types/documents";
 
 interface Props {
@@ -47,87 +47,25 @@ export function DocumentUploader({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = useCallback(async (file: File) => {
-    // クライアント側バリデーション
-    if (file.size > MAX_FILE_SIZE_BYTES) {
-      onError?.("ファイルサイズが100MBを超えています");
-      return;
-    }
-    if (!ALLOWED_MIME_TYPES.includes(file.type as typeof ALLOWED_MIME_TYPES[number])) {
-      onError?.("許可されていないファイル形式です");
-      return;
-    }
-
     setUploading(true);
     setProgress("アップロードURLを取得中…");
 
     try {
-      // Step 1: 署名付きURLを取得
-      const urlRes = await fetch("/api/documents/upload-url", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({
+      const { documentId } = await uploadDocumentFile(
+        file,
+        {
           caseId,
           organizationId,
-          documentTypeId:        documentType.id,
-          participantId,
-          documentRequirementId,
-          originalFilename:      file.name,
-          mimeType:              file.type,
-          fileSize:              file.size,
-        }),
-      });
-
-      if (!urlRes.ok) {
-        const { error } = await urlRes.json() as { error: string };
-        throw new Error(error);
-      }
-
-      const { uploadUrl, storagePath } = await urlRes.json() as {
-        uploadUrl:   string;
-        storagePath: string;
-        token:       string;
-      };
-
-      // Step 2: Storage に直接アップロード
-      setProgress("ファイルをアップロード中…");
-      const uploadRes = await fetch(uploadUrl, {
-        method:  "PUT",
-        headers: { "Content-Type": file.type },
-        body:    file,
-      });
-
-      if (!uploadRes.ok) {
-        throw new Error("ストレージへのアップロードに失敗しました");
-      }
-
-      // Step 3: メタデータ登録
-      setProgress("書類情報を登録中…");
-      const confirmRes = await fetch("/api/documents/confirm", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({
-          storagePath,
-          originalFilename:      file.name,
-          mimeType:              file.type,
-          fileSize:              file.size,
-          caseId,
-          organizationId,
-          documentTypeId:        documentType.id,
+          documentTypeId: documentType.id,
           participantId,
           documentRequirementId,
           replacedDocumentId,
-          ...(uploadToken ? { uploadToken } : {}),
-        }),
-      });
-
-      if (!confirmRes.ok) {
-        const { error } = await confirmRes.json() as { error: string };
-        throw new Error(error);
-      }
-
-      const { document } = await confirmRes.json() as { document: { id: string } };
+          uploadToken,
+        },
+        setProgress
+      );
       setProgress(null);
-      onSuccess(document.id);
+      onSuccess(documentId);
     } catch (err) {
       setProgress(null);
       onError?.(err instanceof Error ? err.message : "アップロードに失敗しました");

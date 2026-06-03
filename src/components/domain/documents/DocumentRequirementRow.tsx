@@ -13,6 +13,7 @@ import { useState, useTransition } from "react";
 import { DocumentUploader } from "./DocumentUploader";
 import { DocumentPreview } from "./DocumentPreview";
 import { ReturnModal } from "./ReturnModal";
+import { SplitPdfModal } from "./SplitPdfModal";
 import { RequirementStatusBadge, ReviewStatusBadge } from "./ReviewStatusBadge";
 import { Button } from "@/components/ui/Button";
 import { AsyncActionButton } from "@/components/ui";
@@ -20,13 +21,15 @@ import {
   approveDocumentAction,
   deleteDocumentAction,
 } from "@/server/usecases/documents/actions";
-import type { DocumentRequirement } from "@/types/documents";
+import type { DocumentRequirement, DocumentType } from "@/types/documents";
 
 interface Props {
   requirement:     DocumentRequirement;
   caseId:          string;
   organizationId:  string;
   canDelete:       boolean;
+  canEdit:         boolean;
+  documentTypes:   DocumentType[];
   onRefresh:       () => void;
 }
 
@@ -35,11 +38,14 @@ export function DocumentRequirementRow({
   caseId,
   organizationId,
   canDelete,
+  canEdit,
+  documentTypes,
   onRefresh,
 }: Props) {
   const [uploading, setUploading]         = useState(false);
   const [previewDocId, setPreviewDocId]   = useState<string | null>(null);
   const [showReturn, setShowReturn]       = useState(false);
+  const [showSplit, setShowSplit]         = useState(false);
   const [errorMsg, setErrorMsg]           = useState<string | null>(null);
   const [isPending, startTransition]      = useTransition();
 
@@ -108,6 +114,15 @@ export function DocumentRequirementRow({
               >
                 確認
               </Button>
+              {canEdit && latestDocument.mimeType === "application/pdf" && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setShowSplit(true)}
+                >
+                  分割
+                </Button>
+              )}
               {latestDocument.reviewStatus !== "approved" && (
                 <>
                   <Button
@@ -192,6 +207,22 @@ export function DocumentRequirementRow({
           onClose={() => setShowReturn(false)}
           onSuccess={() => {
             setShowReturn(false);
+            onRefresh();
+          }}
+        />
+      )}
+
+      {/* PDF分割モーダル */}
+      {showSplit && latestDocument && (
+        <SplitPdfModal
+          documentId={latestDocument.id}
+          caseId={caseId}
+          originalFilename={latestDocument.originalFilename}
+          currentTypeId={documentType.id}
+          documentTypes={documentTypes}
+          onClose={() => setShowSplit(false)}
+          onSuccess={() => {
+            setShowSplit(false);
             onRefresh();
           }}
         />

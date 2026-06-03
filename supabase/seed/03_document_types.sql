@@ -30,6 +30,11 @@ INSERT INTO document_types (code, name, scope, reusable_level, sort_order, activ
     'company', 'organization', 40, TRUE
   ),
   (
+    'power_of_attorney',
+    '委任状',
+    'company', 'organization', 70, TRUE
+  ),
+  (
     'salary_ledger',
     '賃金台帳',
     'company', 'organization', 50, TRUE
@@ -63,8 +68,28 @@ INSERT INTO document_types (code, name, scope, reusable_level, sort_order, activ
     'case', 'case', 140, TRUE
   ),
   (
+    'account_issue_sheet',
+    'アカウント発行シート',
+    'case', 'case', 150, TRUE
+  ),
+  (
+    'plan_notification_receipt',
+    '計画届計画受付書',
+    'case', 'case', 160, TRUE
+  ),
+  (
+    'plan_receipt',
+    '計画受付書',
+    'case', 'case', 170, TRUE
+  ),
+  (
+    'dx_document',
+    'DX文書',
+    'case', 'case', 180, TRUE
+  ),
+  (
     'start_guide',
-    '開始案内',
+    'ご案内書',
     'case', 'case', 210, TRUE
   ),
   (
@@ -134,6 +159,11 @@ INSERT INTO document_types (code, name, scope, reusable_level, sort_order, activ
     'skill_check_post',
     '訓練後スキルチェック',
     'participant', 'participant', 380, TRUE
+  ),
+  (
+    'employment_insurance_loss',
+    '雇用保険被保険者資格喪失届',
+    'participant', 'participant', 390, TRUE
   ),
   -- ============================================================
   -- 汎用

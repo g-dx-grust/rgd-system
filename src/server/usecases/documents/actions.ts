@@ -134,6 +134,37 @@ export async function addRequirementAction(params: {
 }
 
 // ------------------------------------------------------------
+// 書類要件追加（作成した要件IDを返す / 一括アップロード・PDF分割で使用）
+// ------------------------------------------------------------
+
+export async function createRequirementReturningIdAction(params: {
+  caseId:          string;
+  documentTypeId:  string;
+  participantId?:  string;
+  requiredFlag?:   boolean;
+  dueDate?:        string;
+  note?:           string;
+}): Promise<{ requirementId?: string; error?: string }> {
+  const user = await getAuthUser();
+  if (!user) return { error: "認証が必要です" };
+
+  try {
+    const requirement = await createRequirement({
+      caseId:          params.caseId,
+      documentTypeId:  params.documentTypeId,
+      participantId:   params.participantId,
+      requiredFlag:    params.requiredFlag ?? false,
+      dueDate:         params.dueDate,
+      note:            params.note,
+    });
+    return { requirementId: requirement.id };
+  } catch (err) {
+    console.error("[createRequirementReturningId] error:", err);
+    return { error: "書類要件の作成に失敗しました" };
+  }
+}
+
+// ------------------------------------------------------------
 // 書類論理削除
 // ------------------------------------------------------------
 
