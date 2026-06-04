@@ -9,11 +9,12 @@
  * - 「＋ ファイルを追加」で複数ファイルをまとめて追加できる。
  */
 
-import { useCallback, useRef, useState, useTransition } from "react";
+import { useCallback, useState, useTransition } from "react";
 import { DocumentUploader } from "./DocumentUploader";
 import { DocumentPreview } from "./DocumentPreview";
 import { ReturnModal } from "./ReturnModal";
 import { SplitPdfModal } from "./SplitPdfModal";
+import { FileDropzone } from "./FileDropzone";
 import { RequirementStatusBadge } from "./ReviewStatusBadge";
 import { Button } from "@/components/ui/Button";
 import { AsyncActionButton } from "@/components/ui";
@@ -34,11 +35,6 @@ interface Props {
   onRefresh:       () => void;
 }
 
-const ALLOWED_EXTENSIONS = [
-  ".pdf", ".jpg", ".jpeg", ".png", ".webp",
-  ".txt", ".csv", ".xlsx", ".zip",
-].join(",");
-
 // ----------------------------------------------------------------
 // 複数ファイルをまとめて追加するアップローダー（差替えではなく「追加」）
 // ----------------------------------------------------------------
@@ -57,11 +53,8 @@ function AddFilesUploader({
 }) {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress]   = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
 
-  const handleChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []);
-    e.target.value = "";
+  const handleFiles = useCallback(async (files: File[]) => {
     if (files.length === 0) return;
 
     const invalid = files.find((f) => validateUploadFile(f) !== null);
@@ -97,21 +90,14 @@ function AddFilesUploader({
 
   return (
     <div className="mt-2">
-      <input
-        ref={inputRef}
-        type="file"
-        multiple
-        accept={ALLOWED_EXTENSIONS}
-        onChange={handleChange}
+      <FileDropzone
+        onFiles={handleFiles}
         disabled={uploading}
-        className="block w-full text-sm text-[var(--color-text)] file:mr-3 file:rounded-[var(--radius-sm)] file:border file:border-[var(--color-border)] file:bg-white file:px-3 file:py-1 file:text-sm file:text-[var(--color-text)]"
+        compact
+        hint="複数ファイルを選択できます。選んだファイルはこの項目にまとめて追加されます（最大100MB）"
       />
-      {progress ? (
+      {progress && (
         <p className="mt-1 text-xs text-[var(--color-accent)]">{progress}</p>
-      ) : (
-        <p className="mt-1 text-xs text-[var(--color-text-muted)]">
-          複数ファイルを選択できます。選んだファイルはこの項目にまとめて追加されます。
-        </p>
       )}
     </div>
   );

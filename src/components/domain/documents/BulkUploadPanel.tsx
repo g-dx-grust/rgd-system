@@ -10,8 +10,9 @@
  * 主用途: 雇用契約書など、同種の書類を複数枚まとめて追加したいケース。
  */
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { FileDropzone } from "./FileDropzone";
 import { uploadDocumentFile, validateUploadFile } from "@/lib/documents/upload-client";
 import { createRequirementReturningIdAction } from "@/server/usecases/documents/actions";
 import type { DocumentType } from "@/types/documents";
@@ -23,11 +24,6 @@ interface Props {
   onSuccess:      () => void;
   onCancel:       () => void;
 }
-
-const ALLOWED_EXTENSIONS = [
-  ".pdf", ".jpg", ".jpeg", ".png", ".webp",
-  ".txt", ".csv", ".xlsx", ".zip",
-].join(",");
 
 export function BulkUploadPanel({
   caseId,
@@ -41,18 +37,17 @@ export function BulkUploadPanel({
   const [uploading, setUploading]           = useState(false);
   const [progress, setProgress]             = useState<string | null>(null);
   const [error, setError]                   = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
 
-  const handleSelectFiles = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFiles = useCallback((picked: File[]) => {
     setError(null);
-    const picked = Array.from(e.target.files ?? []);
     // クライアント側バリデーション（不正なファイルは弾く）
     const invalid = picked.find((f) => validateUploadFile(f) !== null);
     if (invalid) {
       setError(`「${invalid.name}」: ${validateUploadFile(invalid)}`);
       return;
     }
-    setFiles(picked);
+    // ドロップゾーンは選択のたびに渡ってくるので、追記して溜める
+    setFiles((prev) => [...prev, ...picked]);
   }, []);
 
   const handleUpload = useCallback(async () => {
@@ -111,13 +106,12 @@ export function BulkUploadPanel({
     // 全件成功
     setFiles([]);
     setSelectedTypeId("");
-    if (inputRef.current) inputRef.current.value = "";
     onSuccess();
   }, [selectedTypeId, files, caseId, organizationId, onSuccess]);
 
   return (
     <div className="px-4 py-3 bg-[var(--color-bg-secondary)] border-b border-[var(--color-border)]">
-      <div className="flex items-end gap-3 flex-wrap">
+      <div className="max-w-2xl space-y-3">
         <div className="min-w-48">
           <label className="block text-xs text-[var(--color-text-muted)] mb-1">
             書類種別
@@ -127,7 +121,7 @@ export function BulkUploadPanel({
             onChange={(e) => setSelectedTypeId(e.target.value)}
             disabled={uploading}
             className={[
-              "w-full px-2 py-1.5 text-sm rounded-[var(--radius-sm)]",
+              "w-full max-w-xs px-2 py-1.5 text-sm rounded-[var(--radius-sm)]",
               "border border-[var(--color-border)] focus:border-[var(--color-accent)]",
               "outline-none bg-white text-[var(--color-text)]",
             ].join(" ")}
@@ -141,49 +135,51 @@ export function BulkUploadPanel({
           </select>
         </div>
 
-        <div className="flex-1 min-w-56">
-          <label className="block text-xs text-[var(--color-text-muted)] mb-1">
-            ファイル（複数選択可）
-          </label>
-          <input
-            ref={inputRef}
-            type="file"
-            multiple
-            accept={ALLOWED_EXTENSIONS}
-            onChange={handleSelectFiles}
-            disabled={uploading}
-            className="block w-full text-sm text-[var(--color-text)] file:mr-3 file:rounded-[var(--radius-sm)] file:border file:border-[var(--color-border)] file:bg-white file:px-3 file:py-1 file:text-sm file:text-[var(--color-text)]"
-          />
+        <FileDropzone
+          onFiles={handleFiles}
+          disabled={uploading}
+          compact
+          hint="複数ファイルを選択できます。選んだファイルは1枚ずつ独立した書類として保存されます（最大100MB）"
+        />
+
+        {files.length > 0 && (
+          <ul className="space-y-1">
+            {files.map((f, i) => (
+              <li
+                key={`${f.name}-${i}`}
+                className="flex items-center justify-between gap-2 rounded-[var(--radius-sm)] bg-white border border-[var(--color-border)] px-3 py-1.5 text-xs text-[var(--color-text)]"
+              >
+                <span className="min-w-0 flex-1 truncate">{f.name}</span>
+                {!uploading && (
+                  <button
+                    onClick={() => setFiles((prev) => prev.filter((_, idx) => idx !== i))}
+                    className="shrink-0 text-[var(--color-text-muted)] hover:text-[#DC2626]"
+                    aria-label="削除"
+                  >
+                    ✕
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <div className="flex items-center gap-2">
+          <Button variant="primary" size="sm" onClick={handleUpload} loading={uploading}>
+            {files.length > 0 ? `${files.length}件をアップロード` : "アップロード"}
+          </Button>
+          <Button variant="secondary" size="sm" onClick={onCancel} disabled={uploading}>
+            閉じる
+          </Button>
         </div>
 
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={handleUpload}
-          loading={uploading}
-        >
-          {files.length > 0 ? `${files.length}件をアップロード` : "アップロード"}
-        </Button>
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={onCancel}
-          disabled={uploading}
-        >
-          閉じる
-        </Button>
+        {progress && (
+          <p className="text-xs text-[var(--color-accent)]">{progress}</p>
+        )}
+        {error && (
+          <p className="text-xs text-[#DC2626]">{error}</p>
+        )}
       </div>
-
-      <p className="mt-2 text-xs text-[var(--color-text-muted)]">
-        選択したファイルは1枚ずつ独立した書類として保存されます。
-      </p>
-
-      {progress && (
-        <p className="mt-2 text-xs text-[var(--color-accent)]">{progress}</p>
-      )}
-      {error && (
-        <p className="mt-2 text-xs text-[#DC2626]">{error}</p>
-      )}
     </div>
   );
 }

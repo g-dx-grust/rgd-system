@@ -8,20 +8,16 @@
  * 各ファイルは書類要件として登録され、社内の書類タブにも表示される。
  */
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { validateUploadFile } from "@/lib/documents/upload-client";
+import { FileDropzone } from "@/components/domain/documents/FileDropzone";
 import type { DocumentType } from "@/types/documents";
 
 interface Props {
   caseId:        string;
   documentTypes: DocumentType[];
 }
-
-const ALLOWED_EXTENSIONS = [
-  ".pdf", ".jpg", ".jpeg", ".png", ".webp",
-  ".txt", ".csv", ".xlsx", ".zip",
-].join(",");
 
 async function uploadOneFile(
   caseId: string,
@@ -82,18 +78,16 @@ export function SpecialistUploadSection({ caseId, documentTypes }: Props) {
   const [progress, setProgress]   = useState<string | null>(null);
   const [error, setError]         = useState<string | null>(null);
   const [done, setDone]           = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
 
-  const handleSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFiles = useCallback((picked: File[]) => {
     setError(null);
     setDone(null);
-    const picked = Array.from(e.target.files ?? []);
     const invalid = picked.find((f) => validateUploadFile(f) !== null);
     if (invalid) {
       setError(`「${invalid.name}」: ${validateUploadFile(invalid)}`);
       return;
     }
-    setFiles(picked);
+    setFiles((prev) => [...prev, ...picked]);
   }, []);
 
   const handleUpload = useCallback(async () => {
@@ -131,7 +125,6 @@ export function SpecialistUploadSection({ caseId, documentTypes }: Props) {
     }
     setFiles([]);
     setTypeId("");
-    if (inputRef.current) inputRef.current.value = "";
     router.refresh();
   }, [typeId, files, caseId, router]);
 
@@ -164,23 +157,34 @@ export function SpecialistUploadSection({ caseId, documentTypes }: Props) {
         </div>
 
         <div>
-          <label htmlFor="sp-doc-files" className="block text-sm font-medium text-[var(--color-text-sub)] mb-1">
+          <label className="block text-sm font-medium text-[var(--color-text-sub)] mb-1">
             ファイル（複数選択可） <span className="text-[#DC2626]">*</span>
           </label>
-          <input
-            id="sp-doc-files"
-            ref={inputRef}
-            type="file"
-            multiple
-            accept={ALLOWED_EXTENSIONS}
-            onChange={handleSelect}
-            disabled={uploading}
-            className="block w-full text-sm text-[var(--color-text)] file:mr-3 file:rounded-[var(--radius-sm)] file:border file:border-[var(--color-border-strong)] file:bg-white file:px-3 file:py-1.5 file:text-sm file:text-[var(--color-text)]"
-          />
-          <p className="mt-1 text-xs text-[var(--color-text-muted)]">
-            PDF / 画像（JPG・PNG・WebP）/ テキスト / CSV / XLSX / ZIP（最大100MB）
-          </p>
+          <FileDropzone onFiles={handleFiles} disabled={uploading} compact />
         </div>
+
+        {files.length > 0 && (
+          <ul className="space-y-1">
+            {files.map((f, i) => (
+              <li
+                key={`${f.name}-${i}`}
+                className="flex items-center justify-between gap-2 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs text-[var(--color-text)]"
+              >
+                <span className="min-w-0 flex-1 truncate">{f.name}</span>
+                {!uploading && (
+                  <button
+                    type="button"
+                    onClick={() => setFiles((prev) => prev.filter((_, idx) => idx !== i))}
+                    className="shrink-0 text-[var(--color-text-muted)] hover:text-[#DC2626]"
+                    aria-label="削除"
+                  >
+                    ✕
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
 
         {progress && <p className="text-xs text-[var(--color-accent)]">{progress}</p>}
         {error && (
