@@ -13,11 +13,14 @@ import type {
   SpecialistDocumentRow,
   SpecialistParticipantRow,
 } from "@/server/repositories/specialist";
+import type { DocumentType } from "@/types/documents";
+import { SpecialistUploadSection } from "./SpecialistUploadSection";
 
 interface Props {
   caseId: string;
   documents: SpecialistDocumentRow[];
   participants: SpecialistParticipantRow[];
+  documentTypes: DocumentType[];
   submittedAt: string | null;
   submissionMethod: string | null;
   finalCompletedAt: string | null;
@@ -436,6 +439,7 @@ export function DocumentsClient({
   caseId,
   documents,
   participants,
+  documentTypes,
   submittedAt,
   submissionMethod,
   finalCompletedAt,
@@ -443,6 +447,7 @@ export function DocumentsClient({
   return (
     <div className="space-y-5">
       <DocumentsSection caseId={caseId} documents={documents} />
+      <SpecialistUploadSection caseId={caseId} documentTypes={documentTypes} />
       <ParticipantsSection participants={participants} />
       <SubmissionForm
         caseId={caseId}

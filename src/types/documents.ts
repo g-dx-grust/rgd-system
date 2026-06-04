@@ -117,7 +117,8 @@ export interface DocumentRequirement {
   requestedAt:      string | null;   // ISO datetime
   approvedAt:       string | null;   // ISO datetime
   note:             string | null;
-  latestDocument:   Document | null; // 最新版ファイル
+  documents:        Document[];      // 添付ファイル一覧（有効なもの・新しい順）
+  latestDocument:   Document | null; // documents[0]（後方互換・ステータス表示用）
 }
 
 export interface Document {

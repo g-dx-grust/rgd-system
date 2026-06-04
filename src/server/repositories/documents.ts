@@ -77,6 +77,7 @@ function toRequirement(row: Record<string, unknown>): DocumentRequirement {
     requestedAt:      row.requested_at as string | null,
     approvedAt:       row.approved_at as string | null,
     note:             row.note as string | null,
+    documents:        [],
     latestDocument:   row.latest_document
       ? toDocument(row.latest_document as Record<string, unknown>)
       : null,
@@ -120,7 +121,7 @@ export async function listRequirementsByCase(caseId: string): Promise<DocumentRe
   const requirements = (data ?? []).map((r) => toRequirement(r as Record<string, unknown>));
 
   // 各要件の最新ファイルを取得
-  await attachLatestDocuments(supabase, requirements);
+  await attachDocuments(supabase, requirements);
   return requirements;
 }
 
@@ -140,7 +141,7 @@ export async function listAllRequirementsByCase(caseId: string): Promise<Documen
   if (error) throw new Error(`document_requirements fetch failed: ${error.message}`);
 
   const requirements = (data ?? []).map((r) => toRequirement(r as Record<string, unknown>));
-  await attachLatestDocuments(supabase, requirements);
+  await attachDocuments(supabase, requirements);
   return requirements;
 }
 
@@ -162,12 +163,17 @@ export async function listRequirementsByParticipant(
   if (error) throw new Error(`document_requirements fetch failed: ${error.message}`);
 
   const requirements = (data ?? []).map((r) => toRequirement(r as Record<string, unknown>));
-  await attachLatestDocuments(supabase, requirements);
+  await attachDocuments(supabase, requirements);
   return requirements;
 }
 
-/** 要件に最新版ドキュメントを紐付ける */
-async function attachLatestDocuments(
+/**
+ * 要件に「有効な添付ファイル一覧」を紐付ける。
+ * 1要件に複数ファイルを添付できる。差替え（replaced_document_id で上書き）された
+ * 古いファイルは除外し、残った有効ファイルを新しい順で documents に格納する。
+ * latestDocument は documents[0]（後方互換・ステータス表示用）。
+ */
+async function attachDocuments(
   supabase: Awaited<ReturnType<typeof createClient>>,
   requirements: DocumentRequirement[]
 ): Promise<void> {
@@ -181,20 +187,28 @@ async function attachLatestDocuments(
     .is("deleted_at", null)
     .order("version_no", { ascending: false });
 
-  if (!data) return;
-
-  // 要件IDごとに最大version_noのファイルを取得
-  const latestMap = new Map<string, Record<string, unknown>>();
-  for (const doc of data) {
+  // 要件IDごとにファイルをまとめる（version_no 降順）
+  const byReq = new Map<string, Record<string, unknown>[]>();
+  for (const doc of data ?? []) {
     const reqId = doc.document_requirement_id as string;
-    if (!latestMap.has(reqId)) {
-      latestMap.set(reqId, doc as Record<string, unknown>);
-    }
+    const list = byReq.get(reqId) ?? [];
+    list.push(doc as Record<string, unknown>);
+    byReq.set(reqId, list);
   }
 
   for (const req of requirements) {
-    const latest = latestMap.get(req.id);
-    req.latestDocument = latest ? toDocument(latest) : null;
+    const docs = byReq.get(req.id) ?? [];
+    // 他のファイルに「差替え元」として参照されている＝置き換え済みなので除外
+    const replacedIds = new Set(
+      docs
+        .map((d) => d.replaced_document_id as string | null)
+        .filter((v): v is string => !!v)
+    );
+    const active = docs
+      .filter((d) => !replacedIds.has(d.id as string))
+      .map((d) => toDocument(d));
+    req.documents = active;
+    req.latestDocument = active[0] ?? null;
   }
 }
 
@@ -392,6 +406,45 @@ export async function softDeleteDocument(documentId: string): Promise<void> {
     .eq("id", documentId);
 
   if (error) throw new Error(`document delete failed: ${error.message}`);
+}
+
+/**
+ * 要件単位での承認 / 差戻し。
+ * 1要件に複数ファイルがあっても、要件まるごと（その要件の有効ファイル全て）に
+ * 同じレビュー結果を反映する。
+ */
+export async function setRequirementReview(params: {
+  requirementId:      string;
+  reviewStatus:       "approved" | "returned";
+  returnReason?:      ReturnReason;
+  returnReasonDetail?: string;
+}): Promise<void> {
+  const supabase = await createClient();
+  const now = new Date().toISOString();
+
+  // 要件ステータス更新
+  const { error: reqErr } = await supabase
+    .from("document_requirements")
+    .update({
+      status:      params.reviewStatus === "approved" ? "approved" : "returned",
+      approved_at: params.reviewStatus === "approved" ? now : null,
+    })
+    .eq("id", params.requirementId);
+
+  if (reqErr) throw new Error(`requirement review update failed: ${reqErr.message}`);
+
+  // 要件配下の有効ファイルのレビューステータスも同期（差戻し理由含む）
+  const { error: docErr } = await supabase
+    .from("documents")
+    .update({
+      review_status:        params.reviewStatus,
+      return_reason:        params.reviewStatus === "returned" ? params.returnReason ?? null : null,
+      return_reason_detail: params.reviewStatus === "returned" ? params.returnReasonDetail ?? null : null,
+    })
+    .eq("document_requirement_id", params.requirementId)
+    .is("deleted_at", null);
+
+  if (docErr) throw new Error(`requirement documents review update failed: ${docErr.message}`);
 }
 
 // ------------------------------------------------------------

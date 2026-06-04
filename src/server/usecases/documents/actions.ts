@@ -12,6 +12,7 @@ import {
   updateDocumentReviewStatus,
   softDeleteDocument,
   createRequirement,
+  setRequirementReview,
   listDocumentTypes,
   createUploadToken as repoCreateUploadToken,
 } from "@/server/repositories/documents";
@@ -96,6 +97,71 @@ export async function approveDocumentAction(
   } catch (err) {
     console.error("[approveDocument] error:", err);
     return { error: "承認処理に失敗しました" };
+  }
+}
+
+// ------------------------------------------------------------
+// 要件単位の承認 / 差戻し（1要件に複数ファイルでも、まとめて処理）
+// ------------------------------------------------------------
+
+export async function approveRequirementAction(
+  requirementId: string,
+  caseId: string
+): Promise<ActionResult> {
+  const user = await getAuthUser();
+  if (!user) return { error: "認証が必要です" };
+
+  try {
+    await setRequirementReview({ requirementId, reviewStatus: "approved" });
+
+    await writeAuditLog({
+      userId:     user.id,
+      action:     "document_upload",
+      targetType: "document",
+      targetId:   requirementId,
+      metadata:   { action: "approved", requirementId, caseId },
+    });
+
+    revalidatePath(`/cases/${caseId}/documents`);
+    revalidatePath(`/cases/${caseId}`);
+    return { success: true };
+  } catch (err) {
+    console.error("[approveRequirement] error:", err);
+    return { error: "承認処理に失敗しました" };
+  }
+}
+
+export async function returnRequirementAction(
+  requirementId: string,
+  returnReason: ReturnReason,
+  returnReasonDetail: string | undefined,
+  caseId: string
+): Promise<ActionResult> {
+  const user = await getAuthUser();
+  if (!user) return { error: "認証が必要です" };
+
+  try {
+    await setRequirementReview({
+      requirementId,
+      reviewStatus: "returned",
+      returnReason,
+      returnReasonDetail,
+    });
+
+    await writeAuditLog({
+      userId:     user.id,
+      action:     "document_return",
+      targetType: "document",
+      targetId:   requirementId,
+      metadata:   { returnReason, returnReasonDetail, requirementId, caseId },
+    });
+
+    revalidatePath(`/cases/${caseId}/documents`);
+    revalidatePath(`/cases/${caseId}`);
+    return { success: true };
+  } catch (err) {
+    console.error("[returnRequirement] error:", err);
+    return { error: "差戻し処理に失敗しました" };
   }
 }
 

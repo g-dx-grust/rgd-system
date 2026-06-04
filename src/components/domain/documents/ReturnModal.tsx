@@ -10,17 +10,17 @@
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/Button";
 import { RETURN_REASON, RETURN_REASON_LABEL, type ReturnReason } from "@/types/documents";
-import { returnDocumentAction } from "@/server/usecases/documents/actions";
+import { returnRequirementAction } from "@/server/usecases/documents/actions";
 
 interface Props {
-  documentId: string;
-  caseId:     string;
-  filename:   string;
-  onClose:    () => void;
-  onSuccess:  () => void;
+  requirementId: string;
+  caseId:        string;
+  filename:      string;
+  onClose:       () => void;
+  onSuccess:     () => void;
 }
 
-export function ReturnModal({ documentId, caseId, filename, onClose, onSuccess }: Props) {
+export function ReturnModal({ requirementId, caseId, filename, onClose, onSuccess }: Props) {
   const [reason, setReason]     = useState<ReturnReason | "">("");
   const [detail, setDetail]     = useState("");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -33,8 +33,8 @@ export function ReturnModal({ documentId, caseId, filename, onClose, onSuccess }
     }
     setErrorMsg(null);
     startTransition(async () => {
-      const result = await returnDocumentAction(
-        documentId,
+      const result = await returnRequirementAction(
+        requirementId,
         reason as ReturnReason,
         detail.trim() || undefined,
         caseId

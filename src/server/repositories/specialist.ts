@@ -568,3 +568,90 @@ export async function createSpecialistSignedUrl(
   }
   return data.signedUrl;
 }
+
+// ---------------------------------------------------------------
+// 社労士による書類アップロード（アクセス権確認・登録）
+// ---------------------------------------------------------------
+
+/**
+ * 社労士が当該案件の担当（is_active）であることを確認し、案件の organization_id を返す。
+ * 担当でなければ null。サーバー側の権限担保に使用する。
+ */
+export async function getSpecialistCaseOrganizationId(
+  caseId: string,
+  specialistUserId: string
+): Promise<string | null> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("specialist_cases")
+    .select("id, cases ( organization_id )")
+    .eq("case_id", caseId)
+    .eq("specialist_user_id", specialistUserId)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  const c = (data.cases as unknown) as Record<string, unknown> | null;
+  const orgId = c?.["organization_id"];
+  return orgId != null ? String(orgId) : null;
+}
+
+/**
+ * 社労士アップロードを documents へ登録する（admin クライアント使用）。
+ * ファイルごとに書類要件を1件作成して紐付けるため、社内の書類タブにも独立した行として表示される。
+ * 呼び出し前に getSpecialistCaseOrganizationId 等でアクセス権を確認していること。
+ */
+export async function registerSpecialistDocument(params: {
+  caseId: string;
+  organizationId: string;
+  documentTypeId: string;
+  storagePath: string;
+  originalFilename: string;
+  mimeType: string;
+  fileSize: number;
+  uploadedByUserId: string;
+}): Promise<{ ok: boolean; documentId?: string; error?: string }> {
+  const admin = createAdminClient();
+  const now = new Date().toISOString();
+
+  // 1. 書類要件を作成（社労士アップロード分）
+  const { data: req, error: reqErr } = await admin
+    .from("document_requirements")
+    .insert({
+      case_id:          params.caseId,
+      document_type_id: params.documentTypeId,
+      required_flag:    false,
+      status:           "received",
+      requested_at:     now,
+      note:             "社労士アップロード",
+    })
+    .select("id")
+    .single();
+
+  if (reqErr || !req) return { ok: false, error: reqErr?.message };
+
+  // 2. documents へ登録
+  const { data: doc, error: docErr } = await admin
+    .from("documents")
+    .insert({
+      case_id:                 params.caseId,
+      organization_id:         params.organizationId,
+      document_requirement_id: req.id,
+      document_type_id:        params.documentTypeId,
+      storage_bucket:          "case-documents",
+      storage_path:            params.storagePath,
+      original_filename:       params.originalFilename,
+      mime_type:               params.mimeType,
+      file_size:               params.fileSize,
+      version_no:              1,
+      review_status:           "uploaded",
+      uploaded_by_user_id:     params.uploadedByUserId,
+      uploaded_at:             now,
+    })
+    .select("id")
+    .single();
+
+  if (docErr || !doc) return { ok: false, error: docErr?.message };
+
+  return { ok: true, documentId: String(doc.id) };
+}

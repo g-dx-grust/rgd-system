@@ -4,24 +4,25 @@
  * DocumentRequirementRow
  *
  * 書類要件1行のインタラクティブ部分。
- * - アップロード済みの場合: プレビュー / 差戻し / 承認ボタン
- * - 未提出の場合: アップローダーを展開
- * - 版履歴リンク
+ * - 1要件に複数ファイルを添付できる（各ファイルごとに確認 / 差替え / 削除 / 分割）。
+ * - 承認 / 差戻しは「要件（項目）単位」でまとめて行う。
+ * - 「＋ ファイルを追加」で複数ファイルをまとめて追加できる。
  */
 
-import { useState, useTransition } from "react";
+import { useCallback, useRef, useState, useTransition } from "react";
 import { DocumentUploader } from "./DocumentUploader";
 import { DocumentPreview } from "./DocumentPreview";
 import { ReturnModal } from "./ReturnModal";
 import { SplitPdfModal } from "./SplitPdfModal";
-import { RequirementStatusBadge, ReviewStatusBadge } from "./ReviewStatusBadge";
+import { RequirementStatusBadge } from "./ReviewStatusBadge";
 import { Button } from "@/components/ui/Button";
 import { AsyncActionButton } from "@/components/ui";
 import {
-  approveDocumentAction,
+  approveRequirementAction,
   deleteDocumentAction,
 } from "@/server/usecases/documents/actions";
-import type { DocumentRequirement, DocumentType } from "@/types/documents";
+import { uploadDocumentFile, validateUploadFile } from "@/lib/documents/upload-client";
+import type { Document, DocumentRequirement, DocumentType } from "@/types/documents";
 
 interface Props {
   requirement:     DocumentRequirement;
@@ -33,6 +34,89 @@ interface Props {
   onRefresh:       () => void;
 }
 
+const ALLOWED_EXTENSIONS = [
+  ".pdf", ".jpg", ".jpeg", ".png", ".webp",
+  ".txt", ".csv", ".xlsx", ".zip",
+].join(",");
+
+// ----------------------------------------------------------------
+// 複数ファイルをまとめて追加するアップローダー（差替えではなく「追加」）
+// ----------------------------------------------------------------
+function AddFilesUploader({
+  caseId,
+  organizationId,
+  requirement,
+  onDone,
+  onError,
+}: {
+  caseId:         string;
+  organizationId: string;
+  requirement:    DocumentRequirement;
+  onDone:         () => void;
+  onError:        (msg: string) => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress]   = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (files.length === 0) return;
+
+    const invalid = files.find((f) => validateUploadFile(f) !== null);
+    if (invalid) {
+      onError(`「${invalid.name}」: ${validateUploadFile(invalid)}`);
+      return;
+    }
+
+    setUploading(true);
+    const failures: string[] = [];
+    let count = 0;
+    for (const file of files) {
+      setProgress(`アップロード中… (${count + 1}/${files.length}) ${file.name}`);
+      try {
+        await uploadDocumentFile(file, {
+          caseId,
+          organizationId,
+          documentTypeId:        requirement.documentTypeId,
+          participantId:         requirement.participantId ?? undefined,
+          documentRequirementId: requirement.id,
+          // replacedDocumentId は渡さない → 既存ファイルを置き換えず「追加」する
+        });
+      } catch (err) {
+        failures.push(`${file.name}: ${err instanceof Error ? err.message : "失敗"}`);
+      }
+      count += 1;
+    }
+    setUploading(false);
+    setProgress(null);
+    if (failures.length > 0) onError(failures.join(" / "));
+    onDone();
+  }, [caseId, organizationId, requirement, onDone, onError]);
+
+  return (
+    <div className="mt-2">
+      <input
+        ref={inputRef}
+        type="file"
+        multiple
+        accept={ALLOWED_EXTENSIONS}
+        onChange={handleChange}
+        disabled={uploading}
+        className="block w-full text-sm text-[var(--color-text)] file:mr-3 file:rounded-[var(--radius-sm)] file:border file:border-[var(--color-border)] file:bg-white file:px-3 file:py-1 file:text-sm file:text-[var(--color-text)]"
+      />
+      {progress ? (
+        <p className="mt-1 text-xs text-[var(--color-accent)]">{progress}</p>
+      ) : (
+        <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+          複数ファイルを選択できます。選んだファイルはこの項目にまとめて追加されます。
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function DocumentRequirementRow({
   requirement,
   caseId,
@@ -42,32 +126,30 @@ export function DocumentRequirementRow({
   documentTypes,
   onRefresh,
 }: Props) {
-  const [uploading, setUploading]         = useState(false);
-  const [previewDocId, setPreviewDocId]   = useState<string | null>(null);
-  const [showReturn, setShowReturn]       = useState(false);
-  const [showSplit, setShowSplit]         = useState(false);
-  const [errorMsg, setErrorMsg]           = useState<string | null>(null);
-  const [isPending, startTransition]      = useTransition();
+  const [previewDoc, setPreviewDoc]   = useState<Document | null>(null);
+  const [splitDoc, setSplitDoc]       = useState<Document | null>(null);
+  const [replaceDoc, setReplaceDoc]   = useState<Document | null>(null);
+  const [adding, setAdding]           = useState(false);
+  const [showReturn, setShowReturn]   = useState(false);
+  const [errorMsg, setErrorMsg]       = useState<string | null>(null);
+  const [isPending, startTransition]  = useTransition();
 
-  const { latestDocument, documentType, status, dueDate, requiredFlag } = requirement;
+  const { documents, documentType, status, dueDate, requiredFlag, latestDocument } = requirement;
+  const hasFiles = documents.length > 0;
 
   const isOverdue = dueDate && new Date(dueDate) < new Date() && status !== "approved";
 
   const handleApprove = () => {
-    if (!latestDocument) return;
     startTransition(async () => {
-      const result = await approveDocumentAction(latestDocument.id, caseId);
-      if (result.error) {
-        setErrorMsg(result.error);
-      } else {
-        onRefresh();
-      }
+      const result = await approveRequirementAction(requirement.id, caseId);
+      if (result.error) setErrorMsg(result.error);
+      else onRefresh();
     });
   };
 
   return (
     <div className="py-3 border-b border-[var(--color-border)] last:border-b-0">
-      {/* 書類種別行 */}
+      {/* 見出し行 */}
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
@@ -78,12 +160,13 @@ export function DocumentRequirementRow({
               <span className="text-xs text-[#DC2626] font-medium">必須</span>
             )}
             <RequirementStatusBadge status={status} />
-            {latestDocument && (
-              <ReviewStatusBadge status={latestDocument.reviewStatus} />
+            {hasFiles && (
+              <span className="text-xs text-[var(--color-text-muted)]">
+                {documents.length}ファイル
+              </span>
             )}
           </div>
 
-          {/* 期限 */}
           {dueDate && (
             <p className={`mt-0.5 text-xs ${isOverdue ? "text-[#DC2626] font-medium" : "text-[var(--color-text-muted)]"}`}>
               期限: {new Date(dueDate).toLocaleDateString("ja-JP")}
@@ -91,7 +174,6 @@ export function DocumentRequirementRow({
             </p>
           )}
 
-          {/* 差戻し理由 */}
           {latestDocument?.returnReasonDetail && (
             <p className="mt-1 text-xs text-[#DC2626] bg-[rgba(220,38,38,0.06)] px-2 py-1 rounded-[var(--radius-sm)]">
               差戻しコメント: {latestDocument.returnReasonDetail}
@@ -103,128 +185,152 @@ export function DocumentRequirementRow({
           )}
         </div>
 
-        {/* アクションボタン */}
+        {/* 要件単位のアクション */}
         <div className="flex items-center gap-2 shrink-0">
-          {latestDocument && (
+          {hasFiles && status !== "approved" && (
             <>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setPreviewDocId(latestDocument.id)}
-              >
-                確認
+              <Button variant="primary" size="sm" onClick={handleApprove} loading={isPending}>
+                承認
               </Button>
-              {canEdit && latestDocument.mimeType === "application/pdf" && (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setShowSplit(true)}
-                >
-                  分割
-                </Button>
-              )}
-              {latestDocument.reviewStatus !== "approved" && (
-                <>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={handleApprove}
-                    loading={isPending}
-                  >
-                    承認
-                  </Button>
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    onClick={() => setShowReturn(true)}
-                    disabled={isPending}
-                  >
-                    差戻し
-                  </Button>
-                </>
-              )}
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => setShowReturn(true)}
+                disabled={isPending}
+              >
+                差戻し
+              </Button>
             </>
           )}
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => setUploading((v) => !v)}
-          >
-            {uploading ? "閉じる" : latestDocument ? "差替え" : "提出"}
-          </Button>
-          {latestDocument && canDelete && (
-            <AsyncActionButton
-              label="削除"
-              pendingLabel="削除中..."
-              confirmMessage={`書類「${latestDocument.originalFilename}」を削除しますか？`}
-              action={() => deleteDocumentAction(latestDocument.id, caseId)}
-              refreshOnSuccess={false}
-              onSuccess={() => {
-                setUploading(false);
-                setPreviewDocId(null);
-                setShowReturn(false);
-                onRefresh();
-              }}
-            />
+          {canEdit && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => { setAdding((v) => !v); setErrorMsg(null); }}
+            >
+              {adding ? "閉じる" : hasFiles ? "+ ファイルを追加" : "提出"}
+            </Button>
           )}
         </div>
       </div>
 
-      {/* アップローダー展開 */}
-      {uploading && (
+      {/* ファイル一覧 */}
+      {hasFiles && (
+        <ul className="mt-2 space-y-1">
+          {documents.map((doc) => (
+            <li
+              key={doc.id}
+              className="flex items-center justify-between gap-3 rounded-[var(--radius-sm)] bg-[var(--color-bg-secondary)] px-3 py-1.5"
+            >
+              <span className="min-w-0 flex-1 truncate text-xs text-[var(--color-text)]">
+                {doc.originalFilename}
+              </span>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => setPreviewDoc(doc)}
+                  className="text-xs font-medium text-[var(--color-accent)] hover:underline"
+                >
+                  確認
+                </button>
+                {canEdit && (
+                  <button
+                    onClick={() => setReplaceDoc(doc)}
+                    className="text-xs text-[var(--color-text-sub)] hover:underline"
+                  >
+                    差替え
+                  </button>
+                )}
+                {canEdit && doc.mimeType === "application/pdf" && (
+                  <button
+                    onClick={() => setSplitDoc(doc)}
+                    className="text-xs text-[var(--color-text-sub)] hover:underline"
+                  >
+                    分割
+                  </button>
+                )}
+                {canDelete && (
+                  <AsyncActionButton
+                    label="削除"
+                    pendingLabel="削除中..."
+                    confirmMessage={`ファイル「${doc.originalFilename}」を削除しますか？`}
+                    action={() => deleteDocumentAction(doc.id, caseId)}
+                    refreshOnSuccess={false}
+                    onSuccess={onRefresh}
+                  />
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* ファイル追加 */}
+      {adding && canEdit && (
+        <AddFilesUploader
+          caseId={caseId}
+          organizationId={organizationId}
+          requirement={requirement}
+          onDone={() => { setAdding(false); onRefresh(); }}
+          onError={(msg) => setErrorMsg(msg)}
+        />
+      )}
+
+      {/* 差替えアップローダー */}
+      {replaceDoc && (
         <div className="mt-3">
+          <p className="mb-1 text-xs text-[var(--color-text-muted)]">
+            「{replaceDoc.originalFilename}」を差し替えます
+          </p>
           <DocumentUploader
             caseId={caseId}
             organizationId={organizationId}
             documentType={documentType}
+            participantId={requirement.participantId ?? undefined}
             documentRequirementId={requirement.id}
-            replacedDocumentId={latestDocument?.id}
-            onSuccess={() => {
-              setUploading(false);
-              onRefresh();
-            }}
+            replacedDocumentId={replaceDoc.id}
+            onSuccess={() => { setReplaceDoc(null); onRefresh(); }}
             onError={(msg) => setErrorMsg(msg)}
           />
+          <button
+            onClick={() => setReplaceDoc(null)}
+            className="mt-1 text-xs text-[var(--color-text-muted)] hover:underline"
+          >
+            差替えをやめる
+          </button>
         </div>
       )}
 
-      {/* プレビューモーダル */}
-      {previewDocId && latestDocument && (
+      {/* プレビュー */}
+      {previewDoc && (
         <DocumentPreview
-          documentId={previewDocId}
-          originalFilename={latestDocument.originalFilename}
-          mimeType={latestDocument.mimeType}
-          onClose={() => setPreviewDocId(null)}
+          documentId={previewDoc.id}
+          originalFilename={previewDoc.originalFilename}
+          mimeType={previewDoc.mimeType}
+          onClose={() => setPreviewDoc(null)}
         />
       )}
 
-      {/* 差戻しモーダル */}
-      {showReturn && latestDocument && (
+      {/* 差戻しモーダル（要件単位） */}
+      {showReturn && (
         <ReturnModal
-          documentId={latestDocument.id}
+          requirementId={requirement.id}
           caseId={caseId}
-          filename={latestDocument.originalFilename}
+          filename={documentType.name}
           onClose={() => setShowReturn(false)}
-          onSuccess={() => {
-            setShowReturn(false);
-            onRefresh();
-          }}
+          onSuccess={() => { setShowReturn(false); onRefresh(); }}
         />
       )}
 
       {/* PDF分割モーダル */}
-      {showSplit && latestDocument && (
+      {splitDoc && (
         <SplitPdfModal
-          documentId={latestDocument.id}
+          documentId={splitDoc.id}
           caseId={caseId}
-          originalFilename={latestDocument.originalFilename}
+          originalFilename={splitDoc.originalFilename}
           currentTypeId={documentType.id}
           documentTypes={documentTypes}
-          onClose={() => setShowSplit(false)}
-          onSuccess={() => {
-            setShowSplit(false);
-            onRefresh();
-          }}
+          onClose={() => setSplitDoc(null)}
+          onSuccess={() => { setSplitDoc(null); onRefresh(); }}
         />
       )}
     </div>

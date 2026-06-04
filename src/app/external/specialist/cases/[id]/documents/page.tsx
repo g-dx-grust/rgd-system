@@ -7,6 +7,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUserProfile } from "@/lib/auth/session";
 import { getSpecialistCaseDetail } from "@/server/repositories/specialist";
+import { listDocumentTypes } from "@/server/repositories/documents";
 import { DocumentsClient } from "./DocumentsClient";
 
 interface Props {
@@ -32,7 +33,10 @@ export default async function SpecialistDocumentsPage({ params }: Props) {
   }
 
   const { id: caseId } = await params;
-  const detail = await getSpecialistCaseDetail(caseId, profile.id);
+  const [detail, documentTypes] = await Promise.all([
+    getSpecialistCaseDetail(caseId, profile.id),
+    listDocumentTypes(),
+  ]);
 
   if (!detail) notFound();
 
@@ -114,6 +118,7 @@ export default async function SpecialistDocumentsPage({ params }: Props) {
         caseId={caseId}
         documents={detail.documents}
         participants={detail.participants}
+        documentTypes={documentTypes}
         submittedAt={detail.submittedAt}
         submissionMethod={detail.submissionMethod}
         finalCompletedAt={detail.finalCompletedAt}
