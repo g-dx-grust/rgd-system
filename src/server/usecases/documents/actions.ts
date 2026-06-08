@@ -12,6 +12,7 @@ import {
   updateDocumentReviewStatus,
   softDeleteDocument,
   createRequirement,
+  deleteRequirement,
   setRequirementReview,
   listDocumentTypes,
   createUploadToken as repoCreateUploadToken,
@@ -227,6 +228,37 @@ export async function createRequirementReturningIdAction(params: {
   } catch (err) {
     console.error("[createRequirementReturningId] error:", err);
     return { error: "書類要件の作成に失敗しました" };
+  }
+}
+
+// ------------------------------------------------------------
+// 書類要件（項目）削除
+// ------------------------------------------------------------
+
+export async function deleteRequirementAction(
+  requirementId: string,
+  caseId: string
+): Promise<ActionResult> {
+  const user = await getAuthUser();
+  if (!user) return { error: "認証が必要です" };
+
+  try {
+    await deleteRequirement(requirementId);
+
+    await writeAuditLog({
+      userId:     user.id,
+      action:     "document_delete",
+      targetType: "document",
+      targetId:   requirementId,
+      metadata:   { action: "requirement_delete", requirementId, caseId },
+    });
+
+    revalidatePath(`/cases/${caseId}/documents`);
+    revalidatePath(`/cases/${caseId}`);
+    return { success: true };
+  } catch (err) {
+    console.error("[deleteRequirement] error:", err);
+    return { error: "書類要件の削除に失敗しました" };
   }
 }
 

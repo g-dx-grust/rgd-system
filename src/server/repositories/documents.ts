@@ -239,6 +239,32 @@ export async function createRequirement(params: {
   return toRequirement(data as unknown as Record<string, unknown>);
 }
 
+/**
+ * 書類要件（項目）を削除する。
+ * - その要件に紐づく有効ファイルがあれば、まとめて論理削除してから要件を削除する
+ *   （ファイルが宙に浮く＝どこにも表示されない状態を防ぐ）。
+ * - 要件行自体は物理削除する（document_requirements には deleted_at が無いため）。
+ */
+export async function deleteRequirement(requirementId: string): Promise<void> {
+  const supabase = await createClient();
+
+  // 紐づく有効ファイルを論理削除
+  const { error: docErr } = await supabase
+    .from("documents")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("document_requirement_id", requirementId)
+    .is("deleted_at", null);
+
+  if (docErr) throw new Error(`requirement documents delete failed: ${docErr.message}`);
+
+  const { error } = await supabase
+    .from("document_requirements")
+    .delete()
+    .eq("id", requirementId);
+
+  if (error) throw new Error(`requirement delete failed: ${error.message}`);
+}
+
 export async function updateRequirementStatus(
   requirementId: string,
   status: DocumentRequirement["status"],

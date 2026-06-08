@@ -21,6 +21,7 @@ import { AsyncActionButton } from "@/components/ui";
 import {
   approveRequirementAction,
   deleteDocumentAction,
+  deleteRequirementAction,
 } from "@/server/usecases/documents/actions";
 import { uploadDocumentFile, validateUploadFile } from "@/lib/documents/upload-client";
 import type { Document, DocumentRequirement, DocumentType } from "@/types/documents";
@@ -196,6 +197,20 @@ export function DocumentRequirementRow({
             >
               {adding ? "閉じる" : hasFiles ? "+ ファイルを追加" : "提出"}
             </Button>
+          )}
+          {canDelete && (
+            <AsyncActionButton
+              label="項目削除"
+              pendingLabel="削除中..."
+              confirmMessage={
+                hasFiles
+                  ? `項目「${documentType.name}」を削除しますか？\n添付されている${documents.length}件のファイルもまとめて削除されます。`
+                  : `項目「${documentType.name}」を削除しますか？`
+              }
+              action={() => deleteRequirementAction(requirement.id, caseId)}
+              refreshOnSuccess={false}
+              onSuccess={onRefresh}
+            />
           )}
         </div>
       </div>
